@@ -102,6 +102,42 @@ describe("parseAlerts", () => {
     expect(alerts.map((a) => a.id)).toEqual(["early", "late"]);
   });
 
+  it("normalizes severity case", () => {
+    const alerts = parseAlerts({
+      features: [
+        feature({ id: "a", severity: "severe" }),
+        feature({ id: "b", severity: " EXTREME " }),
+      ],
+    });
+    expect(alerts.map((a) => a.severity)).toEqual(["Extreme", "Severe"]);
+  });
+
+  it("sorts an untimed alert after a timed one of the same severity", () => {
+    const alerts = parseAlerts({
+      features: [
+        feature({ id: "untimed", severity: "Minor" }),
+        feature({
+          id: "timed",
+          severity: "Minor",
+          onset: "2026-01-01T00:00:00Z",
+        }),
+      ],
+    });
+    expect(alerts.map((a) => a.id)).toEqual(["timed", "untimed"]);
+  });
+
+  it("strips the URL prefix when falling back to the feature id", () => {
+    const alerts = parseAlerts({
+      features: [
+        {
+          id: "https://api.weather.gov/alerts/urn:oid:1.2.3",
+          properties: { event: "Test Event" },
+        },
+      ],
+    });
+    expect(alerts.map((a) => a.id)).toEqual(["urn:oid:1.2.3"]);
+  });
+
   it("skips features without an id or event", () => {
     const alerts = parseAlerts({
       features: [

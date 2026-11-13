@@ -33,10 +33,14 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 const text = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
+const SEVERITIES: Severity[] = ["Extreme", "Severe", "Moderate", "Minor"];
+
 const toSeverity = (v: unknown): Severity =>
-  v === "Extreme" || v === "Severe" || v === "Moderate" || v === "Minor"
-    ? v
-    : "Unknown";
+  (typeof v === "string" &&
+    SEVERITIES.find((s) => s.toLowerCase() === v.trim().toLowerCase())) ||
+  "Unknown";
+
+const ID_PREFIX = "https://api.weather.gov/alerts/";
 
 // Missing or unparseable times sort last among equals.
 const startMs = (alert: Alert): number => {
@@ -47,7 +51,12 @@ const startMs = (alert: Alert): number => {
 function parseAlert(feature: unknown): Alert | null {
   if (!isRecord(feature)) return null;
   const props = isRecord(feature.properties) ? feature.properties : {};
-  const id = text(props.id) ?? text(feature.id);
+  const featureId = text(feature.id);
+  const id =
+    text(props.id) ??
+    (featureId?.startsWith(ID_PREFIX)
+      ? featureId.slice(ID_PREFIX.length)
+      : featureId);
   const event = text(props.event);
   if (!id || !event) return null;
   return {

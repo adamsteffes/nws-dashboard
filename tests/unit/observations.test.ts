@@ -55,7 +55,8 @@ describe("parseObservation", () => {
     expect(obs.temperatureF).toBe(75);
     expect(obs.heatIndexF).toBe(76);
     expect(obs.windChillF).toBeNull();
-    expect(obs.feelsLikeF).toBe(76);
+    // The API's heat index does not apply at 75 F.
+    expect(obs.feelsLikeF).toBe(75);
     expect(obs.windDirection).toBe("NW");
     expect(Number.isInteger(obs.windMph)).toBe(true);
   });
@@ -88,20 +89,69 @@ describe("parseObservation", () => {
     ).toBe("KABC");
   });
 
-  describe("feelsLike precedence", () => {
-    const q = (value: number | null) => ({ unitCode: "wmoUnit:degF", value });
-    const build = (heatIndex: number | null, windChill: number | null) =>
+  describe("feelsLike thresholds", () => {
+    const q = (value: number | null, unitCode = "wmoUnit:degF") => ({
+      unitCode,
+      value,
+    });
+    const build = (
+      temperature: number | null,
+      heatIndex: number | null,
+      windChill: number | null,
+      windMph: number | null,
+    ) =>
       parseObservation({
         properties: {
-          temperature: q(50),
+          temperature: q(temperature),
           heatIndex: q(heatIndex),
           windChill: q(windChill),
+          windSpeed: q(windMph, "wmoUnit:km_h-1"),
         },
       }).feelsLikeF;
+    const kmh = (mph: number) => mph * 1.609344;
 
-    it("uses heat index first", () => expect(build(95, 20)).toBe(95));
-    it("then wind chill", () => expect(build(null, 20)).toBe(20));
-    it("then temperature", () => expect(build(null, null)).toBe(50));
+    it("uses heat index at 80 F and above", () => {
+      expect(build(80, 85, null, kmh(5))).toBe(85);
+      expect(build(79, 85, null, kmh(5))).toBe(79);
+    });
+
+    it("uses wind chill at 50 F and below with wind over 3 mph", () => {
+      expect(build(50, null, 45, kmh(10))).toBe(45);
+      expect(build(51, null, 45, kmh(10))).toBe(51);
+      expect(build(40, null, 35, kmh(3))).toBe(40);
+      expect(build(40, null, 35, kmh(4))).toBe(35);
+      expect(build(40, null, 35, null)).toBe(40);
+    });
+
+    it("falls back to temperature, or null without one", () => {
+      expect(build(65, null, null, kmh(5))).toBe(65);
+      expect(build(90, null, null, kmh(5))).toBe(90);
+      expect(build(null, 95, 20, kmh(10))).toBeNull();
+    });
+  });
+
+  it("reports no wind direction when the wind is calm", () => {
+    const wind = (kmh: number) =>
+      parseObservation({
+        properties: {
+          windSpeed: { unitCode: "wmoUnit:km_h-1", value: kmh },
+          windDirection: { unitCode: "wmoUnit:degree_(angle)", value: 90 },
+        },
+      });
+    expect(wind(0).windMph).toBe(0);
+    expect(wind(0).windDirection).toBeNull();
+    expect(wind(0.5).windMph).toBe(0);
+    expect(wind(0.5).windDirection).toBeNull();
+    expect(wind(10).windDirection).toBe("E");
+  });
+
+  it("never returns negative zero", () => {
+    const at = (value: number) =>
+      parseObservation({
+        properties: { temperature: { unitCode: "wmoUnit:degF", value } },
+      });
+    expect(Object.is(at(-0.2).temperatureF, 0)).toBe(true);
+    expect(at(-5).temperatureF).toBe(-5);
   });
 });
 
@@ -140,11 +190,11 @@ describe("fetchLatestObservation", () => {
   const ok = (body: unknown) => ({ status: 200, body });
   const url = latestObservationUrl;
 
-  function setup(routes: Routes) {
+  function setup(routes: Routes, lastGood: LastGood = noStore) {
     const fetchFn = createFakeFetch(routes);
     const client = createNwsClient({
       fetchFn,
-      lastGood: noStore,
+      lastGood,
       isOnline: () => true,
       sleep: async () => {},
     });
@@ -163,7 +213,8 @@ describe("fetchLatestObservation", () => {
     expect(res.tooOld).toBe(false);
     expect(res.ageMinutes).toBe(30);
     expect(res.stale).toBe(false);
-    expect(fetchFn.calls).toHaveLength(1);
+    // Stations are fetched concurrently, so the second is requested too.
+    expect(fetchFn.calls).toHaveLength(2);
   });
 
   it("falls back when the first station has no temperature", async () => {
@@ -206,6 +257,58 @@ describe("fetchLatestObservation", () => {
     expect(res.data.stationId).toBe("B");
     expect(res.tooOld).toBe(true);
     expect(res.data.temperatureF).toBeNull();
+  });
+
+  it("prefers an old reading with a temperature over a recent empty one", async () => {
+    const { client } = setup({
+      [url("A")]: ok(obsBody("A", null, minutesAgo(10))),
+      [url("B")]: ok(obsBody("B", 10, minutesAgo(300))),
+    });
+    const res = await fetchLatestObservation(client, ["A", "B"], NOW);
+    expect(res.data.stationId).toBe("B");
+    expect(res.tooOld).toBe(true);
+    expect(res.ageMinutes).toBe(300);
+  });
+
+  describe("last-good fallback", () => {
+    const storing = (stored: Record<string, unknown>): LastGood => ({
+      ...noStore,
+      async get<T>(key: string) {
+        const value = stored[key];
+        if (value === undefined) return undefined;
+        return {
+          value: value as T,
+          fetchedAt: "2026-11-13T09:00:00.000Z",
+          expiresAt: "2026-11-13T09:05:00.000Z",
+        };
+      },
+    });
+
+    it("passes stale through and computes age from the observation time", async () => {
+      const { client } = setup(
+        { [url("A")]: [503, 503, 503] },
+        storing({ [url("A")]: obsBody("A", 20, minutesAgo(45)) }),
+      );
+      const res = await fetchLatestObservation(client, ["A"], NOW);
+      expect(res.stale).toBe(true);
+      expect(res.ageMinutes).toBe(45);
+      expect(res.tooOld).toBe(false);
+    });
+
+    it("lets a fresh live station beat an old stored reading", async () => {
+      const { client } = setup(
+        {
+          [url("A")]: [503, 503, 503],
+          [url("B")]: ok(obsBody("B", 10, minutesAgo(5))),
+        },
+        storing({ [url("A")]: obsBody("A", 20, minutesAgo(200)) }),
+      );
+      const res = await fetchLatestObservation(client, ["A", "B"], NOW);
+      expect(res.data.stationId).toBe("B");
+      expect(res.stale).toBe(false);
+      expect(res.usedFallback).toBe(true);
+      expect(res.tooOld).toBe(false);
+    });
   });
 
   it("skips a station that keeps failing", async () => {

@@ -35,8 +35,33 @@ const isRecord = (v: unknown): v is Record<string, unknown> =>
 const text = (v: unknown): string | null =>
   typeof v === "string" && v !== "" ? v : null;
 
-const rounded = (n: number | null, digits = 0): number | null =>
-  n === null ? null : round(n, digits);
+// Rounding a small negative gives -0, which would render as "-0".
+const rounded = (n: number | null, digits = 0): number | null => {
+  if (n === null) return null;
+  const r = round(n, digits);
+  return r === 0 ? 0 : r;
+};
+
+// The API reports heat index and wind chill even when they do not apply, so
+// they only count inside the ranges where the formulas are meaningful.
+function feelsLike(
+  temperatureF: number | null,
+  heatIndexF: number | null,
+  windChillF: number | null,
+  windMph: number | null,
+): number | null {
+  if (temperatureF === null) return null;
+  if (heatIndexF !== null && temperatureF >= 80) return heatIndexF;
+  if (
+    windChillF !== null &&
+    temperatureF <= 50 &&
+    windMph !== null &&
+    windMph > 3
+  ) {
+    return windChillF;
+  }
+  return temperatureF;
+}
 
 export function parseObservation(
   json: unknown,
@@ -53,6 +78,7 @@ export function parseObservation(
   const temperatureF = rounded(convert(props.temperature, "degF"));
   const heatIndexF = rounded(convert(props.heatIndex, "degF"));
   const windChillF = rounded(convert(props.windChill, "degF"));
+  const windMph = rounded(convert(props.windSpeed, "mph"));
   const direction = convert(props.windDirection, "deg");
 
   return {
@@ -63,14 +89,16 @@ export function parseObservation(
     temperatureF,
     dewpointF: rounded(convert(props.dewpoint, "degF")),
     humidity: rounded(convert(props.relativeHumidity, "percent")),
-    windMph: rounded(convert(props.windSpeed, "mph")),
+    windMph,
     windGustMph: rounded(convert(props.windGust, "mph")),
-    windDirection: direction === null ? null : degToCompass(direction),
+    // Calm wind has no meaningful direction; the UI shows "Calm".
+    windDirection:
+      direction === null || windMph === 0 ? null : degToCompass(direction),
     pressureInHg: rounded(convert(props.barometricPressure, "inHg"), 2),
     visibilityMi: rounded(convert(props.visibility, "mi"), 1),
     heatIndexF,
     windChillF,
-    feelsLikeF: heatIndexF ?? windChillF ?? temperatureF,
+    feelsLikeF: feelsLike(temperatureF, heatIndexF, windChillF, windMph),
   };
 }
 
@@ -99,18 +127,24 @@ export async function fetchLatestObservation(
 ): Promise<LatestObservation> {
   if (stationIds.length === 0) throw new Error("No observation stations");
 
+  // Concurrent, so one dead station (retries and timeouts) does not delay the
+  // others; the selection below still honours station order.
+  const results = await Promise.allSettled(
+    stationIds.map(async (stationId): Promise<Fetched<Observation>> => {
+      const res = await client.getJson(latestObservationUrl(stationId), opts);
+      return { ...res, data: parseObservation(res.data, stationId) };
+    }),
+  );
+
   const candidates: Candidate[] = [];
   let lastError: unknown;
-  for (const [index, stationId] of stationIds.entries()) {
-    let fetched: Fetched<Observation>;
-    try {
-      const res = await client.getJson(latestObservationUrl(stationId), opts);
-      fetched = { ...res, data: parseObservation(res.data, stationId) };
-    } catch (error) {
-      if (!(error instanceof NwsError)) throw error;
-      lastError = error;
+  for (const [index, result] of results.entries()) {
+    if (result.status === "rejected") {
+      if (!(result.reason instanceof NwsError)) throw result.reason;
+      lastError = result.reason;
       continue;
     }
+    const fetched = result.value;
     const age = ageMinutes(fetched.data.timestamp, now);
     if (
       fetched.data.temperatureF !== null &&
@@ -131,6 +165,7 @@ export async function fetchLatestObservation(
   const chosen =
     freshest(candidates.filter((c) => c.fetched.data.temperatureF !== null)) ??
     freshest(candidates);
+  // Every station failed: surface the failure of the last one in order.
   if (!chosen) throw lastError;
   return {
     ...chosen.fetched,
