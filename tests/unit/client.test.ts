@@ -187,6 +187,56 @@ describe("caching", () => {
   });
 });
 
+describe("parse option", () => {
+  type Shaped = { n: number };
+  const parse = (json: unknown): Shaped => {
+    const n = (json as { n?: unknown }).n;
+    if (typeof n !== "number") throw new Error("bad shape");
+    return { n };
+  };
+  const body = (value: unknown) => ({ status: 200, body: value });
+
+  it("caches the parsed value, not the raw body", async () => {
+    const { client, entries } = setup({
+      [FORECAST]: body({ n: 1, extra: true }),
+    });
+    const res = await client.getJson(FORECAST, { parse });
+    expect(res.data).toEqual({ n: 1 });
+    await Promise.resolve();
+    expect(entries.get(FORECAST)?.value).toEqual({ n: 1 });
+  });
+
+  it("serves stale data and keeps caches intact when a refresh is malformed", async () => {
+    const { client, fetchFn, entries } = setup({
+      [FORECAST]: [body({ n: 1 }), body({ nope: true })],
+    });
+    await client.getJson(FORECAST, { parse });
+    await Promise.resolve();
+
+    const refreshed = await client.getJson(FORECAST, { parse, refresh: true });
+    expect(refreshed.data).toEqual({ n: 1 });
+    expect(refreshed.stale).toBe(true);
+    // A bad shape is not transient, so it is not retried.
+    expect(fetchFn.calls).toHaveLength(2);
+
+    const later = await client.getJson(FORECAST, { parse });
+    expect(later.data).toEqual({ n: 1 });
+    expect(later.stale).toBe(false);
+    expect(entries.get(FORECAST)?.value).toEqual({ n: 1 });
+  });
+
+  it("throws NwsError 'Invalid response' with nothing cached", async () => {
+    const { client, entries } = setup({ [FORECAST]: body({ nope: true }) });
+    const error = await failure(client.getJson(FORECAST, { parse }));
+    expect(error).toBeInstanceOf(NwsError);
+    expect((error as NwsError).title).toBe("Invalid response");
+    expect((error as NwsError).status).toBe(200);
+    expect((error as NwsError).cause).toBeInstanceOf(Error);
+    await Promise.resolve();
+    expect(entries.has(FORECAST)).toBe(false);
+  });
+});
+
 describe("retries", () => {
   it("retries 503 with exponential backoff until success", async () => {
     const { client, fetchFn, delays } = setup({
