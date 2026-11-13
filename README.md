@@ -34,6 +34,9 @@ In the repository, go to Settings → Pages → Build and deployment → Source 
 - [x] Step 5: unit conversion and time helpers
 - [x] Step 6: TTL cache, last-good store and request limiter
 - [x] Step 7: NWS client core with caching, retries and offline fallback
+- [x] Step 8: points and forecast parsing; responses validated before caching
+- [x] Step 9: alerts and current-conditions parsing with station fallback
+- [x] Step 10: Area Forecast Discussion fetching and parsing
 
 ## Test data
 
