@@ -22,10 +22,21 @@ export type NwsClientOptions = {
   maxAttempts?: number;
 };
 
+export type GetJsonOptions<T> = {
+  refresh?: boolean;
+  /**
+   * Validates and shapes the decoded body before it is cached; the cache and
+   * the last-good store hold the parsed value. A throw counts as an invalid
+   * response: nothing is cached and the stale copy, if any, is served. The
+   * caches are keyed by URL, so always fetch a URL with the same parser.
+   */
+  parse?: (json: unknown) => T;
+};
+
 export type NwsClient = {
   getJson<T = unknown>(
     url: string,
-    opts?: { refresh?: boolean },
+    opts?: GetJsonOptions<T>,
   ): Promise<Fetched<T>>;
   clear(): void;
   forget(prefix: string): Promise<void>;
@@ -112,6 +123,7 @@ export function createNwsClient(opts: NwsClientOptions = {}): NwsClient {
   async function download<T>(
     url: string,
     refresh: boolean,
+    parse?: (json: unknown) => T,
   ): Promise<Fetched<T>> {
     const startedGeneration = generation;
     let failure: NwsError | undefined;
@@ -121,12 +133,22 @@ export function createNwsClient(opts: NwsClientOptions = {}): NwsClient {
       try {
         const res = await attempt(url, refresh);
         if (res.status >= 200 && res.status < 300) {
-          let data: T;
+          let json: unknown;
           try {
-            data = JSON.parse(res.text) as T;
+            json = JSON.parse(res.text);
           } catch (error) {
             failure = new NwsError("Invalid JSON", res.status, url, {
               title: "Invalid JSON",
+              cause: error,
+            });
+            break;
+          }
+          let data: T;
+          try {
+            data = parse ? parse(json) : (json as T);
+          } catch (error) {
+            failure = new NwsError("Invalid response", res.status, url, {
+              title: "Invalid response",
               cause: error,
             });
             break;
@@ -179,7 +201,7 @@ export function createNwsClient(opts: NwsClientOptions = {}): NwsClient {
   return {
     async getJson<T = unknown>(
       url: string,
-      options: { refresh?: boolean } = {},
+      options: GetJsonOptions<T> = {},
     ): Promise<Fetched<T>> {
       const refresh = options.refresh === true;
       if (!refresh) {
@@ -194,7 +216,7 @@ export function createNwsClient(opts: NwsClientOptions = {}): NwsClient {
       // Refreshes get their own flight so they never inherit a cache-friendly
       // response from a plain request already in progress.
       const key = refresh ? `${url}\u0000refresh` : url;
-      return singleFlight(key, () => download<T>(url, refresh));
+      return singleFlight(key, () => download<T>(url, refresh, options.parse));
     },
     clear() {
       generation++;
