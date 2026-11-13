@@ -1,0 +1,13 @@
+{
+  "url": "https://api.weather.gov/alerts/active?point=39.7456,-97.0892",
+  "status": 200,
+  "headers": {
+    "cache-control": "public, max-age=5, s-maxage=5",
+    "expires": "Fri, 13 Nov 2026 08:11:07 GMT",
+    "date": "Fri, 13 Nov 2026 08:11:02 GMT",
+    "content-type": "application/geo+json",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "X-Correlation-Id, X-Request-Id, X-Server-Id",
+    "x-correlation-id": "22a8a2f0"
+  }
+}

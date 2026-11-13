@@ -1,0 +1,13 @@
+{
+  "url": "https://api.weather.gov/products/36579932-4be6-48aa-b7ef-4e0af0e457fb",
+  "status": 200,
+  "headers": {
+    "cache-control": "public, max-age=120, s-maxage=120",
+    "expires": "Fri, 13 Nov 2026 08:13:03 GMT",
+    "date": "Fri, 13 Nov 2026 08:11:03 GMT",
+    "content-type": "application/ld+json",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "X-Correlation-Id, X-Request-Id, X-Server-Id",
+    "x-correlation-id": "2c95db0"
+  }
+}
