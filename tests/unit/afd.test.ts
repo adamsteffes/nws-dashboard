@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   afdListUrl,
   fetchLatestAfd,
+  fetchProduct,
   parseProduct,
   parseProductList,
   productUrl,
@@ -77,6 +78,10 @@ describe("parseProductList", () => {
     expect(refs.map((r) => r.id)).toEqual(["ok"]);
   });
 
+  it("throws when @graph is present but not an array", () => {
+    expect(() => parseProductList({ "@graph": {} })).toThrow(/@graph/);
+  });
+
   it("returns [] for an empty or missing graph", () => {
     expect(parseProductList({ "@graph": [] })).toEqual([]);
     expect(parseProductList({})).toEqual([]);
@@ -107,6 +112,20 @@ describe("parseProduct", () => {
   it("throws when id or productText is missing", () => {
     expect(() => parseProduct({ id: "p" })).toThrow(/productText/);
     expect(() => parseProduct({ productText: "x" })).toThrow(/id/);
+  });
+});
+
+describe("fetchProduct", () => {
+  it("serves the previous good product when a refresh is malformed", async () => {
+    const id = "abc";
+    const { client } = makeClient({
+      [productUrl(id)]: ["afd_product_linn-ks", { status: 200, body: { id } }],
+    });
+    const first = await fetchProduct(client, id);
+    expect(first.stale).toBe(false);
+    const refreshed = await fetchProduct(client, id, { refresh: true });
+    expect(refreshed.stale).toBe(true);
+    expect(refreshed.data).toEqual(first.data);
   });
 });
 

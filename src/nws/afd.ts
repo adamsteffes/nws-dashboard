@@ -56,7 +56,10 @@ const timeOf = (iso: string): number => {
 // Newest first, with entries that lack an id or a usable time dropped.
 function parseAllRefs(json: unknown): ProductRef[] {
   const graph = asRecord(json)["@graph"];
-  if (!Array.isArray(graph)) return [];
+  if (graph === undefined) return [];
+  // Throwing keeps a malformed body out of the client's cache.
+  if (!Array.isArray(graph))
+    throw new Error("Product list @graph is not an array");
   const refs: ProductRef[] = [];
   for (const entry of graph) {
     const record = asRecord(entry);
@@ -109,15 +112,24 @@ export function parseProduct(json: unknown): Product {
   };
 }
 
+// The client caches the parsed value per URL, so the list is cached in full
+// and `limit` is applied to each result.
+const getFullList = (client: NwsClient, cwa: string, opts: FetchOpts) =>
+  client.getJson(afdListUrl(cwa), {
+    refresh: opts.refresh,
+    parse: parseAllRefs,
+  });
+
 export async function fetchAfdList(
   client: NwsClient,
   cwa: string,
   opts: ListOpts = {},
 ): Promise<Fetched<ProductRef[]>> {
-  const res = await client.getJson(afdListUrl(cwa), {
-    refresh: opts.refresh,
-  });
-  return { ...res, data: parseProductList(res.data, opts.limit) };
+  const res = await getFullList(client, cwa, opts);
+  return {
+    ...res,
+    data: res.data.slice(0, sliceLimit(opts.limit ?? DEFAULT_LIMIT)),
+  };
 }
 
 export async function fetchProduct(
@@ -125,8 +137,10 @@ export async function fetchProduct(
   id: string,
   opts: FetchOpts = {},
 ): Promise<Fetched<Product>> {
-  const res = await client.getJson(productUrl(id), { refresh: opts.refresh });
-  return { ...res, data: parseProduct(res.data) };
+  return client.getJson(productUrl(id), {
+    refresh: opts.refresh,
+    parse: parseProduct,
+  });
 }
 
 const MAX_PRODUCT_ATTEMPTS = 3;
@@ -146,12 +160,10 @@ export async function fetchLatestAfd(
   latest: Fetched<Product> | null;
   error?: unknown;
 }> {
-  const raw = await client.getJson(afdListUrl(cwa), {
-    refresh: opts.refresh,
-  });
-  const all = parseAllRefs(raw.data);
+  const full = await getFullList(client, cwa, opts);
+  const all = full.data;
   const list = {
-    ...raw,
+    ...full,
     data: all.slice(0, sliceLimit(opts.limit ?? DEFAULT_LIMIT)),
   };
   let error: unknown;
