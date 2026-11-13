@@ -86,7 +86,6 @@ describe("parsePoint", () => {
     ["forecastHourly", "forecastHourly"],
     ["observationStations", "observationStations"],
     ["forecastZone", "forecastZone"],
-    ["radarStation", "radarStation"],
     ["timeZone", "timeZone"],
     ["cwa", "cwa"],
     ["relativeLocation", "relativeLocation.properties"],
@@ -96,6 +95,14 @@ describe("parsePoint", () => {
     expect(() => parsePoint(json)).toThrow(
       `Unexpected /points response: missing ${label}`,
     );
+  });
+
+  it("allows a missing radarStation", () => {
+    const json = linnCopy();
+    delete json.properties.radarStation;
+    expect(parsePoint(json).radarStation).toBeNull();
+    json.properties.radarStation = null;
+    expect(parsePoint(json).radarStation).toBeNull();
   });
 
   it("throws on a wrong-typed field", () => {
@@ -122,6 +129,26 @@ describe("roundCoord and pointUrl", () => {
   });
 });
 
+describe("pointUrl edge cases", () => {
+  const base = "https://api.weather.gov/points/";
+
+  it("normalises tiny and boundary values", () => {
+    expect(pointUrl(-0.00001, -97.00005)).toBe(`${base}0,-97`);
+    expect(pointUrl(39.99995, -97.12346)).toBe(`${base}40,-97.1235`);
+    expect(pointUrl(0.00005, 0.00005)).toBe(`${base}0.0001,0.0001`);
+  });
+
+  it("never emits exponents or more than 4 decimals", () => {
+    for (const lat of [1e-7, -1e-7, 0.00005, 12.3456789, -89.99999]) {
+      for (const lon of [1e-9, -179.99999, 5e-5, 100.00004]) {
+        const path = pointUrl(lat, lon).slice(base.length);
+        expect(path).not.toMatch(/e/i);
+        expect(path).toMatch(/^-?\d+(\.\d{1,4})?,-?\d+(\.\d{1,4})?$/);
+      }
+    }
+  });
+});
+
 describe("resolvePoint", () => {
   it("requests the rounded point URL and parses it", async () => {
     const { fetchFn, client } = setup({ [LINN]: "points_linn-ks" });
@@ -129,6 +156,35 @@ describe("resolvePoint", () => {
     expect(fetchFn.calls.map((c) => c.url)).toEqual([LINN]);
     expect(res.data.gridId).toBe("TOP");
     expect(res.stale).toBe(false);
+  });
+
+  it("accepts values that round onto the boundary", async () => {
+    const url = "https://api.weather.gov/points/90,180";
+    const { client } = setup({ [url]: "points_linn-ks" });
+    await expect(
+      resolvePoint(client, 90.00004, 180.00004),
+    ).resolves.toBeDefined();
+  });
+
+  it("passes refresh through to bypass the cache", async () => {
+    const { fetchFn, client } = setup({ [LINN]: "points_linn-ks" });
+    await resolvePoint(client, 39.7456, -97.0892);
+    await resolvePoint(client, 39.7456, -97.0892);
+    expect(fetchFn.calls).toHaveLength(1);
+    await resolvePoint(client, 39.7456, -97.0892, { refresh: true });
+    expect(fetchFn.calls).toHaveLength(2);
+  });
+
+  it("keeps the cached point when a refresh returns a malformed body", async () => {
+    const { client } = setup({
+      [LINN]: ["points_linn-ks", { status: 200, body: { properties: {} } }],
+    });
+    await resolvePoint(client, 39.7456, -97.0892);
+    const res = await resolvePoint(client, 39.7456, -97.0892, {
+      refresh: true,
+    });
+    expect(res.stale).toBe(true);
+    expect(res.data.gridId).toBe("TOP");
   });
 
   it.each([

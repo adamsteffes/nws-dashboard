@@ -10,7 +10,7 @@ export type PointInfo = {
   observationStationsUrl: string;
   forecastZone: string;
   county?: string;
-  radarStation: string;
+  radarStation: string | null;
   timeZone: string;
   city: string;
   state: string;
@@ -33,6 +33,11 @@ function reqString(
   const value = obj[key];
   if (typeof value !== "string" || value === "") throw missing(label);
   return value;
+}
+
+function optString(obj: Record<string, unknown>, key: string): string | null {
+  const value = obj[key];
+  return typeof value === "string" && value !== "" ? value : null;
 }
 
 function reqNumber(obj: Record<string, unknown>, key: string): number {
@@ -65,7 +70,8 @@ export function parsePoint(json: unknown): PointInfo {
     forecastHourlyUrl: reqString(props, "forecastHourly"),
     observationStationsUrl: reqString(props, "observationStations"),
     forecastZone,
-    radarStation: reqString(props, "radarStation"),
+    // Marine and territory points can lack a radar.
+    radarStation: optString(props, "radarStation"),
     timeZone: reqString(props, "timeZone"),
     city: reqString(relativeProps, "city", "relativeLocation.city"),
     state: reqString(relativeProps, "state", "relativeLocation.state"),
@@ -85,19 +91,22 @@ export function pointUrl(lat: number, lon: number): string {
   return `${API_BASE}/points/${roundCoord(lat)},${roundCoord(lon)}`;
 }
 
-export async function resolvePoint(
+export function resolvePoint(
   client: NwsClient,
   lat: number,
   lon: number,
+  opts: { refresh?: boolean } = {},
 ): Promise<Fetched<PointInfo>> {
-  if (!Number.isFinite(lat) || lat < -90 || lat > 90) {
-    throw new RangeError(`Latitude out of range: ${lat}`);
+  // Validate the rounded values so 90.00004 is accepted as 90.
+  const rLat = roundCoord(lat);
+  const rLon = roundCoord(lon);
+  if (!Number.isFinite(rLat) || rLat < -90 || rLat > 90) {
+    return Promise.reject(new RangeError(`Latitude out of range: ${lat}`));
   }
-  if (!Number.isFinite(lon) || lon < -180 || lon > 180) {
-    throw new RangeError(`Longitude out of range: ${lon}`);
+  if (!Number.isFinite(rLon) || rLon < -180 || rLon > 180) {
+    return Promise.reject(new RangeError(`Longitude out of range: ${lon}`));
   }
-  const res = await client.getJson(pointUrl(lat, lon));
-  return { ...res, data: parsePoint(res.data) };
+  return client.getJson(pointUrl(lat, lon), { ...opts, parse: parsePoint });
 }
 
 export function parseStations(json: unknown): string[] {
@@ -114,11 +123,14 @@ export function parseStations(json: unknown): string[] {
   return ids;
 }
 
-export async function fetchStations(
+export function fetchStations(
   client: NwsClient,
   url: string,
   limit = 3,
 ): Promise<Fetched<string[]>> {
-  const res = await client.getJson(url);
-  return { ...res, data: parseStations(res.data).slice(0, limit) };
+  // The limit is applied after the client so the cache holds the full list
+  // regardless of the caller's limit.
+  return client
+    .getJson(url, { parse: parseStations })
+    .then((res) => ({ ...res, data: res.data.slice(0, limit) }));
 }

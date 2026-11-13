@@ -35,7 +35,9 @@ const strOrNull = (v: unknown): string | null =>
 function temperatureF(period: Record<string, unknown>): number | null {
   const t = period.temperature;
   if (typeof t !== "number" || Number.isNaN(t)) return null;
-  return period.temperatureUnit === "C" ? round(cToF(t)) : t;
+  if (period.temperatureUnit === "F") return t;
+  if (period.temperatureUnit === "C") return round(cToF(t));
+  return null;
 }
 
 function parsePeriod(raw: unknown, index: number): ForecastPeriod | undefined {
@@ -46,6 +48,8 @@ function parsePeriod(raw: unknown, index: number): ForecastPeriod | undefined {
     number: typeof raw.number === "number" ? raw.number : index + 1,
     name: strOr(raw.name, ""),
     startTime,
+    // A period without an end is treated as instantaneous so nextHours still
+    // has a time to compare against.
     endTime: strOr(raw.endTime, startTime),
     isDaytime: raw.isDaytime === true,
     temperature: temperatureF(raw),
@@ -81,8 +85,7 @@ export async function fetchForecast(
   url: string,
   opts: { refresh?: boolean } = {},
 ): Promise<Fetched<Forecast>> {
-  const res = await client.getJson(url, opts);
-  return { ...res, data: parseForecast(res.data) };
+  return client.getJson(url, { ...opts, parse: parseForecast });
 }
 
 export async function fetchHourly(

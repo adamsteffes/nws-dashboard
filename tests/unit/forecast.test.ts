@@ -87,9 +87,17 @@ describe("parseForecast", () => {
         { startTime: "a", temperature: 20, temperatureUnit: "C" },
         { startTime: "b", temperature: -5, temperatureUnit: "C" },
         { startTime: "c", temperature: 70, temperatureUnit: "F" },
+        { startTime: "d", temperature: 70, temperatureUnit: "K" },
+        { startTime: "e", temperature: 70 },
       ]),
     );
-    expect(forecast.periods.map((p) => p.temperature)).toEqual([68, 23, 70]);
+    expect(forecast.periods.map((p) => p.temperature)).toEqual([
+      68,
+      23,
+      70,
+      null,
+      null,
+    ]);
   });
 
   it("skips periods without startTime and keeps order", () => {
