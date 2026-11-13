@@ -32,6 +32,7 @@ In the repository, go to Settings → Pages → Build and deployment → Source 
 - [x] Step 3: recorded API fixtures and fixture recorder
 - [x] Step 4: Playwright browser tests and live API probe
 - [x] Step 5: unit conversion and time helpers
+- [x] Step 6: TTL cache, last-good store and request limiter
 
 ## Test data
 
