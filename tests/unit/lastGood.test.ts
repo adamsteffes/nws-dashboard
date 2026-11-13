@@ -1,4 +1,4 @@
-import { createStore } from "idb-keyval";
+import { createStore, set } from "idb-keyval";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createLastGood } from "../../src/store/lastGood";
 
@@ -99,6 +99,97 @@ describe("createLastGood", () => {
     await expect(lg.prune()).resolves.toBeUndefined();
     await expect(lg.deleteByPrefix("k")).resolves.toBeUndefined();
     await expect(lg.clear()).resolves.toBeUndefined();
-    expect(warn).toHaveBeenCalledTimes(5);
+    // put warns twice: once for the write and once for its follow-up prune.
+    expect(warn).toHaveBeenCalledTimes(6);
+  });
+
+  it("treats missing or unparseable fetchedAt as oldest when pruning", async () => {
+    const store = freshStore();
+    let t = 1_000_000;
+    const lg = createLastGood({ store, clock: () => t, maxEntries: 2 });
+    await lg.put("a", "a", 1000);
+    t += 1000;
+    await lg.put("b", "b", 1000);
+    // Corrupt the index: "a" gets an unparseable stamp, "z" has no index entry.
+    await set(
+      "__meta__",
+      { a: "garbage", b: new Date(t).toISOString() },
+      store,
+    );
+    await set("z", { value: "z", fetchedAt: "x", expiresAt: "x" }, store);
+    await createLastGood({ store, maxEntries: 1 }).prune();
+    expect(await lg.get("a")).toBeUndefined();
+    expect(await lg.get("z")).toBeUndefined();
+    expect((await lg.get<string>("b"))?.value).toBe("b");
+  });
+
+  it("keeps a concurrently refreshed key when pruning", async () => {
+    const store = freshStore();
+    let t = 1_000_000;
+    const lg = createLastGood({ store, clock: () => t, maxEntries: 2 });
+    await lg.put("a", "a1", 1000);
+    t += 1000;
+    await lg.put("b", "b", 1000);
+    t += 1000;
+    await Promise.all([lg.put("c", "c", 1000), lg.put("a", "a2", 1000)]);
+    await lg.prune();
+    expect((await lg.get<string>("a"))?.value).toBe("a2");
+  });
+
+  it("deleteByPrefix updates the index so later prunes stay correct", async () => {
+    const store = freshStore();
+    let t = 1_000_000;
+    const lg = createLastGood({ store, clock: () => t, maxEntries: 3 });
+    for (const key of ["x:1", "y:1", "y:2"]) {
+      await lg.put(key, key, 1000);
+      t += 1000;
+    }
+    await lg.deleteByPrefix("y:");
+    await lg.put("w", "w", 1000);
+    expect((await lg.get<string>("x:1"))?.value).toBe("x:1");
+    expect((await lg.get<string>("w"))?.value).toBe("w");
+  });
+
+  it("swallows asynchronously rejecting stores", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const rejecting = (() =>
+      Promise.reject(new Error("quota"))) as unknown as ReturnType<
+      typeof createStore
+    >;
+    const lg = createLastGood({ store: rejecting });
+    expect(await lg.get("k")).toBeUndefined();
+    await expect(lg.put("k", 1, 1000)).resolves.toBeUndefined();
+    await expect(lg.deleteByPrefix("k")).resolves.toBeUndefined();
+    await expect(lg.clear()).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalled();
+  });
+
+  it("logs prune failures as prune, not put", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const real = freshStore();
+    let calls = 0;
+    // First transaction (the put) works; the second (the prune) fails.
+    const flaky = ((mode, cb) => {
+      if (++calls > 1) return Promise.reject(new Error("prune boom"));
+      return real(mode, cb);
+    }) as ReturnType<typeof createStore>;
+    const lg = createLastGood({ store: flaky });
+    await lg.put("k", 1, 1000);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toBe("last-good prune failed");
+  });
+
+  it("does not throw when indexedDB is unavailable", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    vi.stubGlobal("indexedDB", undefined);
+    try {
+      const lg = createLastGood();
+      expect(await lg.get("k")).toBeUndefined();
+      await expect(lg.put("k", 1, 1000)).resolves.toBeUndefined();
+      await expect(lg.clear()).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

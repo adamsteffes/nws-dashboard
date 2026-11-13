@@ -29,8 +29,20 @@ export function ttlFromHeaders(
     if (/(^|[\s,])(no-store|no-cache)(?=$|[\s,=])/i.test(cacheControl)) {
       return MIN_TTL_MS;
     }
-    const match = /(?:^|[\s,])max-age=(\d+)/i.exec(cacheControl);
-    if (match?.[1] !== undefined) return clamp(Number(match[1]) * 1000);
+    const match = /(?:^|[\s,])max-age=(?:"(\d+)"|(\d+))(?=$|[\s,;])/i.exec(
+      cacheControl,
+    );
+    const maxAge = match?.[1] ?? match?.[2];
+    if (maxAge !== undefined) {
+      // A response replayed from the browser HTTP cache keeps its original
+      // Date and max-age, so subtract how old it already is. Negative ages
+      // (device clock behind the server) count as zero.
+      const date = Date.parse(readHeader(headers, "date") ?? "");
+      const sinceDate = Number.isNaN(date) ? 0 : Math.max(0, now - date);
+      const ageHeader = readHeader(headers, "age")?.trim() ?? "";
+      const ageMs = /^\d+$/.test(ageHeader) ? Number(ageHeader) * 1000 : 0;
+      return clamp(Number(maxAge) * 1000 - sinceDate - ageMs);
+    }
   }
 
   const expires = Date.parse(readHeader(headers, "expires") ?? "");
@@ -63,7 +75,9 @@ export class TtlCache<T> {
 
   constructor(options: TtlCacheOptions = {}) {
     this.clock = options.clock ?? Date.now;
-    this.maxEntries = options.maxEntries ?? 200;
+    const max = options.maxEntries;
+    this.maxEntries =
+      max !== undefined && Number.isInteger(max) && max >= 1 ? max : 200;
   }
 
   get size(): number {
@@ -92,7 +106,8 @@ export class TtlCache<T> {
   set(key: string, value: T, ttlMs: number): void {
     const storedAt = this.clock();
     this.entries.delete(key);
-    this.entries.set(key, { value, storedAt, expiresAt: storedAt + ttlMs });
+    const ttl = Number.isFinite(ttlMs) ? ttlMs : MIN_TTL_MS;
+    this.entries.set(key, { value, storedAt, expiresAt: storedAt + ttl });
     while (this.entries.size > this.maxEntries) {
       const oldest = this.entries.keys().next();
       if (oldest.done) break;
@@ -126,10 +141,23 @@ export function createSingleFlight(): SingleFlight {
   return <T>(key: string, factory: () => Promise<T>): Promise<T> => {
     const existing = inFlight.get(key);
     if (existing) return existing as Promise<T>;
-    const promise = (async () => factory())().finally(() => {
-      inFlight.delete(key);
+    let start: () => void = () => {};
+    const promise: Promise<T> = new Promise<T>((resolve, reject) => {
+      start = () => {
+        try {
+          factory().then(resolve, reject);
+        } catch (error) {
+          reject(error);
+        }
+      };
+    }).finally(() => {
+      // Only remove our own entry; the key may have been reused by then.
+      if (inFlight.get(key) === promise) inFlight.delete(key);
     });
+    // Register before running the factory so a re-entrant call with the same
+    // key during its synchronous part joins this flight instead of starting one.
     inFlight.set(key, promise);
+    start();
     return promise;
   };
 }

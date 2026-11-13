@@ -31,7 +31,80 @@ describe("ttlFromHeaders", () => {
     ["points_linn-ks.headers.json", 76_770_000],
     ["stations_linn-ks.headers.json", MAX_TTL_MS],
   ])("%s -> %i ms", (file, expected) => {
-    expect(ttlFromHeaders(sidecar(file), now)).toBe(expected);
+    // Evaluated at the response's own Date, i.e. as if freshly fetched.
+    const headers = sidecar(file);
+    expect(ttlFromHeaders(headers, Date.parse(headers.date ?? ""))).toBe(
+      expected,
+    );
+  });
+
+  it("subtracts time since Date for a response replayed from the browser cache", () => {
+    const headers = {
+      "cache-control": "public, max-age=3600",
+      date: "Fri, 13 Nov 2026 08:00:00 GMT",
+    };
+    const fetchedAt = Date.parse("2026-11-13T08:00:00Z");
+    expect(ttlFromHeaders(headers, fetchedAt + 10 * 60_000)).toBe(3_000_000);
+    // 4 minutes into a 5 minute max-age leaves exactly 60 s.
+    expect(
+      ttlFromHeaders(
+        { ...headers, "cache-control": "max-age=300" },
+        fetchedAt + 4 * 60_000,
+      ),
+    ).toBe(MIN_TTL_MS);
+    // Past that, the minimum clamp applies.
+    expect(
+      ttlFromHeaders(
+        { ...headers, "cache-control": "max-age=300" },
+        fetchedAt + 4.5 * 60_000,
+      ),
+    ).toBe(MIN_TTL_MS);
+  });
+
+  it("treats a Date in the future (device clock behind) as age zero", () => {
+    expect(
+      ttlFromHeaders(
+        {
+          "cache-control": "max-age=600",
+          date: "Fri, 13 Nov 2026 09:00:00 GMT",
+        },
+        now,
+      ),
+    ).toBe(600_000);
+  });
+
+  it("subtracts the Age header", () => {
+    expect(
+      ttlFromHeaders({ "cache-control": "max-age=600", age: "200" }, now),
+    ).toBe(400_000);
+    expect(
+      ttlFromHeaders({ "cache-control": "max-age=600", age: "junk" }, now),
+    ).toBe(600_000);
+  });
+
+  it("accepts quoted max-age and ignores garbage values", () => {
+    expect(ttlFromHeaders({ "cache-control": 'max-age="600"' }, now)).toBe(
+      600_000,
+    );
+    for (const value of [
+      "max-age=abc",
+      "max-age=10.5",
+      "max-age=-5",
+      "max-age=",
+    ]) {
+      expect(ttlFromHeaders({ "cache-control": value }, now)).toBe(
+        DEFAULT_TTL_MS,
+      );
+    }
+    expect(
+      ttlFromHeaders(
+        {
+          "cache-control": "max-age=abc",
+          expires: "Fri, 13 Nov 2026 08:21:00 GMT",
+        },
+        now,
+      ),
+    ).toBe(600_000);
   });
 
   it("accepts a Headers instance", () => {
@@ -158,6 +231,27 @@ describe("TtlCache", () => {
     expect(cache.get("a")).toBe("A2");
   });
 
+  it("treats a non-finite ttl as the minimum", () => {
+    const { cache, advance } = setup();
+    cache.set("a", "A", Number.NaN);
+    cache.set("b", "B", Number.POSITIVE_INFINITY);
+    advance(MIN_TTL_MS - 1);
+    expect(cache.get("a")).toBe("A");
+    expect(cache.get("b")).toBe("B");
+    advance(1);
+    expect(cache.get("a")).toBeUndefined();
+    expect(cache.get("b")).toBeUndefined();
+  });
+
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "falls back to 200 entries for invalid maxEntries %s",
+    (maxEntries) => {
+      const cache = new TtlCache<number>({ maxEntries });
+      for (let i = 0; i < 250; i++) cache.set(`k${i}`, i, 10_000);
+      expect(cache.size).toBe(200);
+    },
+  );
+
   it("deletes by key, prefix, and clear", () => {
     const { cache } = setup();
     cache.set("points:1", "p1", 10_000);
@@ -219,6 +313,26 @@ describe("createSingleFlight", () => {
     expect(factory).toHaveBeenCalledTimes(1);
     await expect(singleFlight("k", factory)).resolves.toBe("ok");
     expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it("joins re-entrant same-key calls made while the factory starts", async () => {
+    const singleFlight = createSingleFlight();
+    let inner: Promise<string> | undefined;
+    let finish: (v: string) => void = () => {};
+    const factory = vi.fn(() => {
+      inner = singleFlight("k", factory);
+      return new Promise<string>((r) => {
+        finish = r;
+      });
+    });
+    const outer = singleFlight("k", factory);
+    const third = singleFlight("k", factory);
+    expect(inner).toBe(outer);
+    expect(third).toBe(outer);
+    finish("done");
+    await expect(outer).resolves.toBe("done");
+    expect(factory).toHaveBeenCalledTimes(1);
+    await expect(singleFlight("k", async () => "again")).resolves.toBe("again");
   });
 
   it("turns a synchronously throwing factory into a rejection", async () => {

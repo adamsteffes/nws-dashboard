@@ -5,6 +5,9 @@ export type Limiter = {
 };
 
 export function createLimiter(max: number): Limiter {
+  if (!Number.isInteger(max) || max < 1) {
+    throw new RangeError(`limiter max must be an integer >= 1, got ${max}`);
+  }
   let active = 0;
   const queue: (() => void)[] = [];
 

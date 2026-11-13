@@ -12,6 +12,13 @@ function deferred<T = void>() {
 }
 
 describe("createLimiter", () => {
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects invalid max %s",
+    (max) => {
+      expect(() => createLimiter(max)).toThrow(RangeError);
+    },
+  );
+
   it("never runs more than max tasks at once", async () => {
     const limit = createLimiter(2);
     const gates = Array.from({ length: 5 }, () => deferred());
