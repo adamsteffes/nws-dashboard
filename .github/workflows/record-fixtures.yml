@@ -1,0 +1,60 @@
+name: Record fixtures
+
+on:
+  workflow_dispatch:
+    inputs:
+      points:
+        description: "Space-separated lat,lon:label list (empty uses script defaults)"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Record fixtures
+        continue-on-error: false
+        env:
+          POINTS: ${{ inputs.points }}
+          NWS_CONTACT: ${{ vars.NWS_CONTACT }}
+        # POINTS is intentionally unquoted so it splits into one argument per point.
+        run: npm run record-fixtures -- $POINTS
+      - name: Upload fixtures artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nws-fixtures
+          path: tests/fixtures/nws
+          if-no-files-found: ignore
+      - name: Commit and push branch
+        env:
+          BRANCH: fixtures/recorded-${{ github.run_id }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add tests/fixtures/nws
+          if git diff --cached --quiet; then
+            echo "No fixture changes." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          git commit -m "Record NWS fixtures (run ${{ github.run_id }})"
+          git push origin "$BRANCH"
+          {
+            echo "## Fixtures pushed"
+            echo
+            echo "Branch: \`$BRANCH\`"
+            echo
+            echo "Open a PR: ${{ github.server_url }}/${{ github.repository }}/compare/${{ github.event.repository.default_branch }}...$BRANCH?expand=1"
+            echo
+            cat tests/fixtures/nws/RECORDED.md
+          } >> "$GITHUB_STEP_SUMMARY"

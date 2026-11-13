@@ -1,0 +1,89 @@
+{
+  "@context": ["https://geojson.org/geojson-ld/geojson-context.jsonld"],
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.test1",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.test1",
+        "areaDesc": "Marshall; Nemaha",
+        "sent": "2026-01-15T03:00:00-06:00",
+        "effective": "2026-01-15T03:00:00-06:00",
+        "onset": "2026-01-15T03:00:00-06:00",
+        "expires": "2026-01-15T09:00:00-06:00",
+        "ends": "2026-01-15T09:00:00-06:00",
+        "status": "Actual",
+        "messageType": "Alert",
+        "category": "Met",
+        "severity": "Minor",
+        "certainty": "Likely",
+        "urgency": "Expected",
+        "event": "Frost Advisory",
+        "sender": "w-nws.webmaster@noaa.gov",
+        "senderName": "NWS Topeka KS",
+        "headline": "Frost Advisory issued January 15 at 3:00AM CST until January 15 at 9:00AM CST by NWS Topeka KS",
+        "description": "Temperatures as low as 30 degrees will result in frost formation.",
+        "instruction": "Take steps now to protect tender plants from the cold.",
+        "response": "Shelter"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.test2",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.test2",
+        "areaDesc": "Washington; Marshall",
+        "sent": "2026-01-15T14:10:00-06:00",
+        "effective": "2026-01-15T14:10:00-06:00",
+        "onset": "2026-01-15T14:10:00-06:00",
+        "expires": "2026-01-15T14:45:00-06:00",
+        "ends": "2026-01-15T14:45:00-06:00",
+        "status": "Actual",
+        "messageType": "Alert",
+        "category": "Met",
+        "severity": "Extreme",
+        "certainty": "Observed",
+        "urgency": "Immediate",
+        "event": "Tornado Warning",
+        "sender": "w-nws.webmaster@noaa.gov",
+        "senderName": "NWS Topeka KS",
+        "headline": "Tornado Warning issued January 15 at 2:10PM CST until 2:45PM CST by NWS Topeka KS",
+        "description": "At 210 PM CST, a confirmed tornado was located near Linn, moving northeast at 30 mph. Test payload: <script>alert(\"x\")</script>",
+        "instruction": "TAKE COVER NOW! Move to a basement or an interior room on the lowest floor of a sturdy building.",
+        "response": "Shelter"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.test3",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.test3",
+        "areaDesc": "Washington; Riley",
+        "sent": "2026-01-15T04:00:00-06:00",
+        "effective": "2026-01-15T04:00:00-06:00",
+        "onset": "2026-01-15T18:00:00-06:00",
+        "expires": "2026-01-16T06:00:00-06:00",
+        "ends": null,
+        "status": "Actual",
+        "messageType": "Alert",
+        "category": "Met",
+        "severity": "Moderate",
+        "certainty": "Likely",
+        "urgency": "Expected",
+        "event": "Winter Weather Advisory",
+        "sender": "w-nws.webmaster@noaa.gov",
+        "senderName": "NWS Topeka KS",
+        "headline": "Winter Weather Advisory issued January 15 at 4:00AM CST until January 16 at 6:00AM CST by NWS Topeka KS",
+        "description": "Snow expected. Total snow accumulations of 2 to 4 inches.",
+        "instruction": null,
+        "response": "Shelter"
+      }
+    }
+  ],
+  "title": "current watches, warnings, and advisories for 39.7456, -97.0892",
+  "updated": "2026-01-15T20:00:00+00:00"
+}

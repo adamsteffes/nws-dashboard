@@ -1,0 +1,23 @@
+[
+  {
+    "place_id": 100001,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "relation",
+    "osm_id": 1000010,
+    "lat": "39.7456",
+    "lon": "-97.0892",
+    "category": "boundary",
+    "type": "postcode",
+    "place_rank": 25,
+    "importance": 0.12,
+    "addresstype": "postcode",
+    "name": "66502",
+    "display_name": "66502, Manhattan, Riley County, Kansas, United States",
+    "boundingbox": [
+      "39.6456",
+      "39.845600000000005",
+      "-97.1892",
+      "-96.98920000000001"
+    ]
+  }
+]

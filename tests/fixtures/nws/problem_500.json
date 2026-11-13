@@ -1,0 +1,8 @@
+{
+  "type": "https://api.weather.gov/problems/UnexpectedProblem",
+  "title": "Unexpected Problem",
+  "status": 500,
+  "detail": "An unexpected problem has occurred.",
+  "instance": "https://api.weather.gov/requests/00000000-test-500",
+  "correlationId": "00000000-test-500"
+}

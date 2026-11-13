@@ -1,0 +1,7 @@
+{
+  "@context": ["https://geojson.org/geojson-ld/geojson-context.jsonld"],
+  "type": "FeatureCollection",
+  "features": [],
+  "title": "current watches, warnings, and advisories for 39.7456, -97.0892",
+  "updated": "2026-01-15T12:00:00+00:00"
+}
