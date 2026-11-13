@@ -21,8 +21,11 @@ type ListOpts = FetchOpts & { limit?: number };
 
 const DEFAULT_LIMIT = 6;
 
+// Accepts a 3-character WFO id ("TOP") or its 4-character ICAO form ("KTOP",
+// "PHFO", "TJSJ"); the products API only knows the 3-character form.
 export function afdListUrl(cwa: string): string {
-  const code = cwa.trim().toUpperCase();
+  let code = cwa.trim().toUpperCase();
+  if (/^[KPT][A-Z0-9]{3}$/.test(code)) code = code.slice(1);
   if (!/^[A-Z0-9]{3}$/.test(code)) {
     throw new RangeError(`Invalid NWS office code: ${JSON.stringify(cwa)}`);
   }
@@ -30,6 +33,9 @@ export function afdListUrl(cwa: string): string {
 }
 
 export function productUrl(id: string): string {
+  if (id === "" || id === "." || id === ".." || id.includes("/")) {
+    throw new RangeError(`Invalid product id: ${JSON.stringify(id)}`);
+  }
   return `${BASE}/products/${encodeURIComponent(id)}`;
 }
 
@@ -39,16 +45,16 @@ const str = (v: unknown): string | undefined =>
 const asRecord = (v: unknown): Record<string, unknown> =>
   typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {};
 
-// Unparseable times sort last rather than throwing.
+// The API sends offsets, but a time without one is read as UTC rather than
+// the viewer's local time. Date-only values are already UTC in ECMAScript.
 const timeOf = (iso: string): number => {
-  const ms = Date.parse(iso);
-  return Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+  const value = iso.trim();
+  const zoned = /T.*(?:Z|[+-]\d{2}(?::?\d{2})?)$/i.test(value);
+  return Date.parse(value.includes("T") && !zoned ? `${value}Z` : value);
 };
 
-export function parseProductList(
-  json: unknown,
-  limit = DEFAULT_LIMIT,
-): ProductRef[] {
+// Newest first, with entries that lack an id or a usable time dropped.
+function parseAllRefs(json: unknown): ProductRef[] {
   const graph = asRecord(json)["@graph"];
   if (!Array.isArray(graph)) return [];
   const refs: ProductRef[] = [];
@@ -56,7 +62,7 @@ export function parseProductList(
     const record = asRecord(entry);
     const id = str(record.id);
     const issuanceTime = str(record.issuanceTime);
-    if (!id || !issuanceTime) continue;
+    if (!id || !issuanceTime || Number.isNaN(timeOf(issuanceTime))) continue;
     refs.push({
       id,
       issuanceTime,
@@ -64,8 +70,17 @@ export function parseProductList(
     });
   }
   // The API says newest first, but the order is not part of its contract.
-  refs.sort((a, b) => timeOf(b.issuanceTime) - timeOf(a.issuanceTime));
-  return refs.slice(0, Math.max(0, limit));
+  return refs.sort((a, b) => timeOf(b.issuanceTime) - timeOf(a.issuanceTime));
+}
+
+const sliceLimit = (limit: number): number =>
+  Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : DEFAULT_LIMIT;
+
+export function parseProductList(
+  json: unknown,
+  limit = DEFAULT_LIMIT,
+): ProductRef[] {
+  return parseAllRefs(json).slice(0, sliceLimit(limit));
 }
 
 function normalizeText(raw: string): string {
@@ -114,18 +129,45 @@ export async function fetchProduct(
   return { ...res, data: parseProduct(res.data) };
 }
 
+const MAX_PRODUCT_ATTEMPTS = 3;
+
+/**
+ * Fetches the list, then the newest discussion. If that product cannot be
+ * fetched, older ones are tried (at most 3 requests) so a cached discussion
+ * can still be shown; `error` is set only when none succeeded. Only a failing
+ * list fetch rejects. `limit` shapes `list` but never what counts as latest.
+ */
 export async function fetchLatestAfd(
   client: NwsClient,
   cwa: string,
   opts: ListOpts = {},
-): Promise<{ list: Fetched<ProductRef[]>; latest: Fetched<Product> | null }> {
-  const list = await fetchAfdList(client, cwa, opts);
-  const first = list.data[0];
-  if (!first) return { list, latest: null };
-  const latest = await fetchProduct(client, first.id, {
+): Promise<{
+  list: Fetched<ProductRef[]>;
+  latest: Fetched<Product> | null;
+  error?: unknown;
+}> {
+  const raw = await client.getJson(afdListUrl(cwa), {
     refresh: opts.refresh,
   });
-  return { list, latest };
+  const all = parseAllRefs(raw.data);
+  const list = {
+    ...raw,
+    data: all.slice(0, sliceLimit(opts.limit ?? DEFAULT_LIMIT)),
+  };
+  let error: unknown;
+  for (const ref of all.slice(0, MAX_PRODUCT_ATTEMPTS)) {
+    try {
+      const latest = await fetchProduct(client, ref.id, {
+        refresh: opts.refresh,
+      });
+      return { list, latest };
+    } catch (e) {
+      error = e;
+    }
+  }
+  return error === undefined
+    ? { list, latest: null }
+    : { list, latest: null, error };
 }
 
 export type AfdSection = { title: string | null; body: string };
