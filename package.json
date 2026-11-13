@@ -20,12 +20,14 @@
     "record-fixtures": "node scripts/record-fixtures.ts"
   },
   "dependencies": {
+    "idb-keyval": "^6.3.0",
     "lit-html": "^3.3.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.7",
     "@playwright/test": "1.63.0",
     "@types/node": "^24.19.2",
+    "fake-indexeddb": "^6.2.8",
     "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
