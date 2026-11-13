@@ -1,0 +1,13 @@
+{
+  "url": "https://api.weather.gov/points/25.7617,-80.1918",
+  "status": 200,
+  "headers": {
+    "cache-control": "public, max-age=35182, s-maxage=86400",
+    "expires": "Fri, 13 Nov 2026 17:57:24 GMT",
+    "date": "Fri, 13 Nov 2026 08:11:02 GMT",
+    "content-type": "application/geo+json",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "X-Correlation-Id, X-Request-Id, X-Server-Id",
+    "x-correlation-id": "2d37098"
+  }
+}

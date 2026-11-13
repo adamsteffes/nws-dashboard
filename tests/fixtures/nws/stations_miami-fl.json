@@ -1,0 +1,777 @@
+{
+  "@context": [
+    "https://geojson.org/geojson-ld/geojson-context.jsonld",
+    {
+      "@version": "1.1",
+      "wx": "https://api.weather.gov/ontology#",
+      "s": "https://schema.org/",
+      "geo": "http://www.opengis.net/ont/geosparql#",
+      "unit": "http://codes.wmo.int/common/unit/",
+      "@vocab": "https://api.weather.gov/ontology#",
+      "geometry": {
+        "@id": "s:GeoCoordinates",
+        "@type": "geo:wktLiteral"
+      },
+      "city": "s:addressLocality",
+      "state": "s:addressRegion",
+      "distance": {
+        "@id": "s:Distance",
+        "@type": "s:QuantitativeValue"
+      },
+      "bearing": {
+        "@type": "s:QuantitativeValue"
+      },
+      "value": {
+        "@id": "s:value"
+      },
+      "unitCode": {
+        "@id": "s:unitCode",
+        "@type": "@id"
+      },
+      "forecastOffice": {
+        "@type": "@id"
+      },
+      "forecastGridData": {
+        "@type": "@id"
+      },
+      "publicZone": {
+        "@type": "@id"
+      },
+      "county": {
+        "@type": "@id"
+      },
+      "observationStations": {
+        "@container": "@list",
+        "@type": "@id"
+      }
+    }
+  ],
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id": "https://api.weather.gov/stations/KMIA",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.31639,
+          25.79056
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KMIA",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.048
+        },
+        "stationIdentifier": "KMIA",
+        "name": "Miami, Miami International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 13352.943132011
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 285
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ074",
+        "county": "https://api.weather.gov/zones/county/FLC086",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ074"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KOPF",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.28306,
+          25.91
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KOPF",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.048
+        },
+        "stationIdentifier": "KOPF",
+        "name": "Miami, Opa Locka Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 19269.596429138
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 330
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ074",
+        "county": "https://api.weather.gov/zones/county/FLC086",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ074"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KHWO",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.24111,
+          25.99889
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KHWO",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 2.1336
+        },
+        "stationIdentifier": "KHWO",
+        "name": "Hollywood, North Perry Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 27150.442833533
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 348
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ072",
+        "county": "https://api.weather.gov/zones/county/FLC011",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ072"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KTMB",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.43472,
+          25.64194
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KTMB",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.048
+        },
+        "stationIdentifier": "KTMB",
+        "name": "Miami, Kendall-Tamiami Executive Airport",
+        "timeZone": "America/New_York",
+        "provider": "",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 28002.766000728
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 242
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ074",
+        "county": "https://api.weather.gov/zones/county/FLC086",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ074"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KHST",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.37324,
+          25.49488
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KHST",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 4.8768
+        },
+        "stationIdentifier": "KHST",
+        "name": "Homestead Air Reserve Base",
+        "timeZone": "America/New_York",
+        "provider": "OTHER-MTR",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 34820.026798044
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 212
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ173",
+        "county": "https://api.weather.gov/zones/county/FLC086",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ173"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KFLL",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.1622,
+          26.07874
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KFLL",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.9624
+        },
+        "stationIdentifier": "KFLL",
+        "name": "Fort Lauderdale/Hollywood International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 35586.296322249
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 4
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ172",
+        "county": "https://api.weather.gov/zones/county/FLC011",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ172"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KFXE",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.18333,
+          26.2
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KFXE",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.9624
+        },
+        "stationIdentifier": "KFXE",
+        "name": "Fort Lauderdale, Fort Lauderdale Executive Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 48981.087492951
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 0
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ072",
+        "county": "https://api.weather.gov/zones/county/FLC011",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ072"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KPMP",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.11139,
+          26.24556
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KPMP",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 6.096
+        },
+        "stationIdentifier": "KPMP",
+        "name": "Pompano Beach, Pompano Beach Airpark",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 54578.89437494
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 8
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ172",
+        "county": "https://api.weather.gov/zones/county/FLC011",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ172"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KDJT",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.09919,
+          26.6851
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KDJT",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.048
+        },
+        "stationIdentifier": "KDJT",
+        "name": "President Donald J. Trump International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 103296.8625594
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 4
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ068",
+        "county": "https://api.weather.gov/zones/county/FLC099",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ068"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KMTH",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -81.04765,
+          24.72626
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KMTH",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.9624
+        },
+        "stationIdentifier": "KMTH",
+        "name": "The Florida Keys - Marathon International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 143816.25589049
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 217
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ077",
+        "county": "https://api.weather.gov/zones/county/FLC087",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ077"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KSUA",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.22519,
+          27.18157
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KSUA",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 3.9624
+        },
+        "stationIdentifier": "KSUA",
+        "name": "Witham Field Airport",
+        "timeZone": "America/New_York",
+        "provider": "OTHER-MTR",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 158169.34487698
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 358
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ164",
+        "county": "https://api.weather.gov/zones/county/FLC085",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ164"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KAPF",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -81.76667,
+          26.15
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KAPF",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 2.1336
+        },
+        "stationIdentifier": "KAPF",
+        "name": "Naples, Naples Municipal Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 163738.78580772
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 285
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ069",
+        "county": "https://api.weather.gov/zones/county/FLC021",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ069"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KRSW",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -81.76639,
+          26.52694
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KRSW",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 9.144
+        },
+        "stationIdentifier": "KRSW",
+        "name": "Fort Myers, Southwest Florida International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 179213.86645933
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 298
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ265",
+        "county": "https://api.weather.gov/zones/county/FLC071",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ265"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KOBE",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.8498,
+          27.2628
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KOBE",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 10.3632
+        },
+        "stationIdentifier": "KOBE",
+        "name": "Okeechobee County Airport",
+        "timeZone": "America/New_York",
+        "provider": "OTHER-MTR",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 179675.08430637
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 338
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ058",
+        "county": "https://api.weather.gov/zones/county/FLC093",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ058"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KFMY",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -81.8625,
+          26.58417
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KFMY",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 4.8768
+        },
+        "stationIdentifier": "KFMY",
+        "name": "Fort Myers, Page Field",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 190646.49232713
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 299
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ265",
+        "county": "https://api.weather.gov/zones/county/FLC071",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ265"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KFPR",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -80.37667,
+          27.49806
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KFPR",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 7.9248
+        },
+        "stationIdentifier": "KFPR",
+        "name": "Fort Pierce, St. Lucie County International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 194228.70428221
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 354
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ159",
+        "county": "https://api.weather.gov/zones/county/FLC111",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ159"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KNQX",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -81.68293,
+          24.58009
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KNQX",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 0.9144
+        },
+        "stationIdentifier": "KNQX",
+        "name": "Key West Naval Air Station",
+        "timeZone": "America/New_York",
+        "provider": "ASOS",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 199611.80058342
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 229
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ078",
+        "county": "https://api.weather.gov/zones/county/FLC087",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ078"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KEYW",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -81.75539,
+          24.55707
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KEYW",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 0.9144
+        },
+        "stationIdentifier": "KEYW",
+        "name": "Key West International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 206821.76320004
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 230
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ078",
+        "county": "https://api.weather.gov/zones/county/FLC087",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ078"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KPGD",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -81.99361,
+          26.91778
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KPGD",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 7.0104
+        },
+        "stationIdentifier": "KPGD",
+        "name": "Punta Gorda, Charlotte County Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 221305.5424678
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 305
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ162",
+        "county": "https://api.weather.gov/zones/county/FLC015",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ162"
+      }
+    },
+    {
+      "id": "https://api.weather.gov/stations/KSRQ",
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -82.55861,
+          27.40139
+        ]
+      },
+      "properties": {
+        "@id": "https://api.weather.gov/stations/KSRQ",
+        "@type": "wx:ObservationStation",
+        "elevation": {
+          "unitCode": "wmoUnit:m",
+          "value": 9.144
+        },
+        "stationIdentifier": "KSRQ",
+        "name": "Sarasota / Bradenton, Sarasota-Bradenton International Airport",
+        "timeZone": "America/New_York",
+        "provider": "ASOS-HFM",
+        "subProvider": "",
+        "distance": {
+          "unitCode": "wmoUnit:m",
+          "value": 298188.0486981
+        },
+        "bearing": {
+          "unitCode": "wmoUnit:degree_(angle)",
+          "value": 308
+        },
+        "forecast": "https://api.weather.gov/zones/forecast/FLZ155",
+        "county": "https://api.weather.gov/zones/county/FLC081",
+        "fireWeatherZone": "https://api.weather.gov/zones/fire/FLZ155"
+      }
+    }
+  ],
+  "observationStations": [
+    "https://api.weather.gov/stations/KMIA",
+    "https://api.weather.gov/stations/KOPF",
+    "https://api.weather.gov/stations/KHWO",
+    "https://api.weather.gov/stations/KTMB",
+    "https://api.weather.gov/stations/KHST",
+    "https://api.weather.gov/stations/KFLL",
+    "https://api.weather.gov/stations/KFXE",
+    "https://api.weather.gov/stations/KPMP",
+    "https://api.weather.gov/stations/KDJT",
+    "https://api.weather.gov/stations/KMTH",
+    "https://api.weather.gov/stations/KSUA",
+    "https://api.weather.gov/stations/KAPF",
+    "https://api.weather.gov/stations/KRSW",
+    "https://api.weather.gov/stations/KOBE",
+    "https://api.weather.gov/stations/KFMY",
+    "https://api.weather.gov/stations/KFPR",
+    "https://api.weather.gov/stations/KNQX",
+    "https://api.weather.gov/stations/KEYW",
+    "https://api.weather.gov/stations/KPGD",
+    "https://api.weather.gov/stations/KSRQ"
+  ],
+  "pagination": {
+    "next": "https://api.weather.gov/stations?id%5B0%5D=K2IS&id%5B1%5D=KAPF&id%5B2%5D=KDJT&id%5B3%5D=KEYW&id%5B4%5D=KFLL&id%5B5%5D=KFMY&id%5B6%5D=KFPR&id%5B7%5D=KFXE&id%5B8%5D=KHST&id%5B9%5D=KHWO&id%5B10%5D=KMIA&id%5B11%5D=KMTH&id%5B12%5D=KNQX&id%5B13%5D=KOBE&id%5B14%5D=KOPF&id%5B15%5D=KPGD&id%5B16%5D=KPMP&id%5B17%5D=KRSW&id%5B18%5D=KSRQ&id%5B19%5D=KSUA&id%5B20%5D=KTMB&cursor=eyJzIjo1MDB9"
+  }
+}
