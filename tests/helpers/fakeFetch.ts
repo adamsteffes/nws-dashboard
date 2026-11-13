@@ -9,6 +9,10 @@ export type Step =
   /** A bare HTTP status with a problem+json body. */
   | number
   | { fixture: string }
+  /** Never answers; rejects with the signal's reason once it aborts. */
+  | { hang: true }
+  /** Headers arrive, then the body stream fails mid-read. */
+  | { bodyError: Error }
   | { status: number; headers?: Record<string, string>; body?: unknown }
   | Error
   | (() => Promise<Response>);
@@ -40,7 +44,7 @@ function fixtureResponse(name: string): Response {
   return new Response(JSON.stringify(body), { status, headers });
 }
 
-function respond(step: Step): Response | Promise<Response> {
+function respond(step: Step, init?: RequestInit): Response | Promise<Response> {
   if (typeof step === "function") return step();
   if (step instanceof Error) throw step;
   if (step === "timeout") {
@@ -53,6 +57,24 @@ function respond(step: Step): Response | Promise<Response> {
       status: step,
       headers: { "content-type": "application/problem+json" },
     });
+  }
+  if ("hang" in step) {
+    return new Promise<Response>((_, reject) => {
+      const signal = init?.signal;
+      if (!signal) return;
+      const fail = () => reject(signal.reason);
+      if (signal.aborted) fail();
+      else signal.addEventListener("abort", fail, { once: true });
+    });
+  }
+  if ("bodyError" in step) {
+    const { bodyError } = step;
+    const body = new ReadableStream({
+      pull(controller) {
+        controller.error(bodyError);
+      },
+    });
+    return new Response(body, { status: 200 });
   }
   if ("fixture" in step) return fixtureResponse(step.fixture);
   const body =
@@ -79,14 +101,14 @@ export function createFakeFetch(routes: Routes): FakeFetch {
     if (route === undefined) {
       throw new Error(`fakeFetch: no route for ${url}`);
     }
-    if (!Array.isArray(route)) return respond(route);
+    if (!Array.isArray(route)) return respond(route, init);
     const i = positions.get(url) ?? 0;
     const step = route[i];
     if (step === undefined) {
       throw new Error(`fakeFetch: route for ${url} exhausted after ${i} calls`);
     }
     positions.set(url, i + 1);
-    return respond(step);
+    return respond(step, init);
   };
   return Object.assign(fake, { calls }) as FakeFetch;
 }

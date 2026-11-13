@@ -77,6 +77,32 @@ const failure = async (promise: Promise<unknown>) => {
   throw new Error("expected promise to reject");
 };
 
+type Deferred = { resolve: () => void };
+
+const deferredRoutes = (urls: string[]) => {
+  const pending: Deferred[] = [];
+  let inFlight = 0;
+  let peak = 0;
+  const routes: Routes = {};
+  for (const url of urls) {
+    routes[url] = () => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      return new Promise<Response>((resolve) => {
+        pending.push({
+          resolve: () => {
+            inFlight--;
+            resolve(new Response("{}", { status: 200 }));
+          },
+        });
+      });
+    };
+  }
+  return { routes, pending, peak: () => peak };
+};
+
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 describe("parseProblem", () => {
   it("extracts title, detail and correlationId", () => {
     expect(
@@ -267,6 +293,78 @@ describe("retries", () => {
     expect(fetchFn.calls).toHaveLength(3);
   });
 
+  it("times out a request that never answers and retries it", async () => {
+    const { client, fetchFn } = setup(
+      { [FORECAST]: [{ hang: true }, { fixture: "forecast_linn-ks" }] },
+      { timeoutMs: 5 },
+    );
+    const result = await client.getJson(FORECAST);
+    expect(result.stale).toBe(false);
+    expect(fetchFn.calls).toHaveLength(2);
+  });
+
+  it("reports a persistent real timeout as status 0", async () => {
+    const { client } = setup(
+      { [FORECAST]: [{ hang: true }, { hang: true }, { hang: true }] },
+      { timeoutMs: 5 },
+    );
+    const error = (await failure(client.getJson(FORECAST))) as NwsError;
+    expect(error.status).toBe(0);
+    expect(error.title).toBe("Timeout");
+  });
+
+  it("retries AbortError", async () => {
+    const { client, fetchFn } = setup({
+      [FORECAST]: [
+        new DOMException("aborted", "AbortError"),
+        { fixture: "forecast_linn-ks" },
+      ],
+    });
+    await client.getJson(FORECAST);
+    expect(fetchFn.calls).toHaveLength(2);
+  });
+
+  it("retries when the body read fails mid-stream", async () => {
+    const { client, fetchFn, delays } = setup({
+      [FORECAST]: [
+        { bodyError: new TypeError("Load failed") },
+        { fixture: "forecast_linn-ks" },
+      ],
+    });
+    const result = await client.getJson(FORECAST);
+    expect(result.stale).toBe(false);
+    expect(fetchFn.calls).toHaveLength(2);
+    expect(delays).toEqual([500]);
+  });
+
+  it("retries when the body read times out", async () => {
+    const { client, fetchFn } = setup({
+      [FORECAST]: [
+        { bodyError: new DOMException("slow", "TimeoutError") },
+        { fixture: "forecast_linn-ks" },
+      ],
+    });
+    await client.getJson(FORECAST);
+    expect(fetchFn.calls).toHaveLength(2);
+  });
+
+  it.each([
+    ["a past HTTP date", "Fri, 13 Nov 2026 08:00:00 GMT"],
+    ["garbage", "soon-ish"],
+    ["a negative number", "-5"],
+    ["a fraction", "1.5"],
+    ["zero", "0"],
+  ])("ignores Retry-After that is %s", async (_label, value) => {
+    const { client, delays } = setup({
+      [FORECAST]: [
+        { status: 429, headers: { "retry-after": value } },
+        { fixture: "forecast_linn-ks" },
+      ],
+    });
+    await client.getJson(FORECAST);
+    expect(delays).toEqual([500]);
+  });
+
   it("respects maxAttempts", async () => {
     const { client, fetchFn } = setup(
       { [FORECAST]: [503, 503] },
@@ -344,43 +442,81 @@ describe("offline", () => {
 });
 
 describe("concurrency", () => {
-  type Deferred = { resolve: () => void };
-
-  const deferredRoutes = (urls: string[]) => {
-    const pending: Deferred[] = [];
-    let inFlight = 0;
-    let peak = 0;
-    const routes: Routes = {};
-    for (const url of urls) {
-      routes[url] = () => {
-        inFlight++;
-        peak = Math.max(peak, inFlight);
-        return new Promise<Response>((resolve) => {
-          pending.push({
-            resolve: () => {
-              inFlight--;
-              resolve(new Response("{}", { status: 200 }));
-            },
-          });
-        });
-      };
-    }
-    return { routes, pending, peak: () => peak };
-  };
-
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
-
   it("shares one fetch between concurrent calls for the same URL", async () => {
     const d = deferredRoutes([FORECAST]);
     const { client, fetchFn } = setup(d.routes);
-    const calls = Array.from({ length: 10 }, (_, i) =>
-      client.getJson(FORECAST, { refresh: i % 2 === 0 }),
-    );
+    const calls = Array.from({ length: 10 }, () => client.getJson(FORECAST));
     await settle();
     d.pending[0]?.resolve();
     const results = await Promise.all(calls);
     expect(fetchFn.calls).toHaveLength(1);
     expect(results.every((r) => r.stale === false)).toBe(true);
+  });
+
+  it("gives refreshes their own flight instead of joining a plain request", async () => {
+    const d = deferredRoutes([FORECAST]);
+    const { client, fetchFn } = setup(d.routes);
+    const plain = Array.from({ length: 3 }, () => client.getJson(FORECAST));
+    const refreshed = Array.from({ length: 3 }, () =>
+      client.getJson(FORECAST, { refresh: true }),
+    );
+    await settle();
+    expect(fetchFn.calls.map((c) => c.init?.cache)).toEqual([
+      "default",
+      "no-cache",
+    ]);
+    for (const p of d.pending) p.resolve();
+    await Promise.all([...plain, ...refreshed]);
+  });
+
+  it("holds its slot until the body has been read", async () => {
+    let finishBody: () => void = () => {};
+    const slow = () =>
+      Promise.resolve(
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              finishBody = () => {
+                controller.enqueue(new TextEncoder().encode("{}"));
+                controller.close();
+              };
+            },
+          }),
+          { status: 200 },
+        ),
+      );
+    const { client, fetchFn } = setup(
+      { [FORECAST]: slow, [POINTS]: "points_linn-ks" },
+      { maxConcurrent: 1 },
+    );
+    const first = client.getJson(FORECAST);
+    const second = client.getJson(POINTS);
+    await settle();
+    expect(fetchFn.calls.map((c) => c.url)).toEqual([FORECAST]);
+    finishBody();
+    await Promise.all([first, second]);
+    expect(fetchFn.calls.map((c) => c.url)).toEqual([FORECAST, POINTS]);
+  });
+
+  it("frees the slot while backing off between attempts", async () => {
+    let releaseSleep: () => void = () => {};
+    const sleeping = new Promise<void>((resolve) => {
+      releaseSleep = resolve;
+    });
+    const { client, fetchFn } = setup(
+      {
+        [FORECAST]: [503, { fixture: "forecast_linn-ks" }],
+        [POINTS]: "points_linn-ks",
+      },
+      { maxConcurrent: 1, sleep: () => sleeping },
+    );
+    const first = client.getJson(FORECAST);
+    await settle();
+    const second = await client.getJson(POINTS);
+    expect(second.stale).toBe(false);
+    expect(fetchFn.calls.map((c) => c.url)).toEqual([FORECAST, POINTS]);
+    releaseSleep();
+    expect((await first).stale).toBe(false);
   });
 
   it("never runs more than 4 requests at once", async () => {
@@ -426,12 +562,28 @@ describe("clear and forget", () => {
     await client.forget("https://api.weather.gov/gridpoints/TOP/");
     expect(entries.has(FORECAST)).toBe(false);
     expect(entries.has(other)).toBe(true);
-
-    const offline = setup({}, { isOnline: () => false });
-    expect(await failure(offline.client.getJson(FORECAST))).toBeInstanceOf(
-      NwsOfflineError,
-    );
   });
+
+  it.each(["forget", "clear"] as const)(
+    "%s during a download keeps the result out of the caches",
+    async (method) => {
+      const d = deferredRoutes([FORECAST]);
+      let online = true;
+      const { client, entries } = setup(d.routes, { isOnline: () => online });
+      const call = client.getJson(FORECAST);
+      await settle();
+      if (method === "forget") await client.forget(FORECAST);
+      else client.clear();
+      d.pending[0]?.resolve();
+      expect((await call).stale).toBe(false);
+      await settle();
+      expect(entries.has(FORECAST)).toBe(false);
+      online = false;
+      expect(await failure(client.getJson(FORECAST))).toBeInstanceOf(
+        NwsOfflineError,
+      );
+    },
+  );
 
   it("forget drops the memory entry so it is not served afterwards", async () => {
     let online = true;

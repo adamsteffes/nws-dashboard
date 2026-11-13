@@ -7,6 +7,7 @@ export type ProblemDetails = {
 export type NwsErrorInit = ProblemDetails & { cause?: unknown };
 
 export class NwsError extends Error {
+  override name = "NwsError";
   status: number;
   url: string;
   title?: string;
@@ -23,7 +24,6 @@ export class NwsError extends Error {
       message,
       init.cause === undefined ? undefined : { cause: init.cause },
     );
-    this.name = new.target.name;
     this.status = status;
     this.url = url;
     this.title = init.title;
@@ -36,6 +36,7 @@ export class NwsError extends Error {
 export class NwsNotFound extends NwsError {
   constructor(url: string, init: NwsErrorInit = {}) {
     super(init.title ?? "Not found", 404, url, init);
+    this.name = "NwsNotFound";
   }
 }
 
@@ -43,6 +44,7 @@ export class NwsNotFound extends NwsError {
 export class NwsOfflineError extends NwsError {
   constructor(url: string) {
     super("Offline and nothing cached", 0, url, { title: "Offline" });
+    this.name = "NwsOfflineError";
   }
 }
 
