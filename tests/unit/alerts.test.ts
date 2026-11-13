@@ -64,9 +64,10 @@ describe("parseAlerts", () => {
     },
   );
 
-  it("returns [] for malformed input", () => {
-    expect(parseAlerts(null)).toEqual([]);
-    expect(parseAlerts({ features: "nope" })).toEqual([]);
+  it("throws on a clearly wrong shape", () => {
+    expect(() => parseAlerts(null)).toThrow();
+    expect(() => parseAlerts({ features: "nope" })).toThrow();
+    expect(() => parseAlerts({})).toThrow();
   });
 
   it("maps unknown severity to Unknown and ranks it last", () => {
@@ -205,5 +206,26 @@ describe("fetchAlerts", () => {
     expect(typeof res.fetchedAt).toBe("string");
     expect(res.data).toHaveLength(3);
     expect(res.data[0]?.severity).toBe("Extreme");
+  });
+
+  it("serves the previous alerts as stale after a malformed refresh", async () => {
+    const url = "https://api.weather.gov/alerts/active?point=39.7456,-97.0892";
+    const fetchFn = createFakeFetch({
+      [url]: [
+        { status: 200, body: fixture("alerts_active_multi") },
+        { status: 200, body: { features: "nope" } },
+      ],
+    });
+    const client = createNwsClient({
+      fetchFn,
+      lastGood: noStore,
+      isOnline: () => true,
+    });
+    await fetchAlerts(client, 39.7456, -97.0892);
+    const res = await fetchAlerts(client, 39.7456, -97.0892, {
+      refresh: true,
+    });
+    expect(res.stale).toBe(true);
+    expect(res.data).toHaveLength(3);
   });
 });

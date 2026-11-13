@@ -67,8 +67,11 @@ export function parseObservation(
   json: unknown,
   stationId?: string,
 ): Observation {
-  const props =
-    isRecord(json) && isRecord(json.properties) ? json.properties : {};
+  if (!isRecord(json) || !isRecord(json.properties)) {
+    // Throwing keeps a malformed body out of the cache.
+    throw new Error("Invalid observation response");
+  }
+  const props = json.properties;
   const id =
     text(props.stationId) ??
     stationId ??
@@ -131,8 +134,10 @@ export async function fetchLatestObservation(
   // others; the selection below still honours station order.
   const results = await Promise.allSettled(
     stationIds.map(async (stationId): Promise<Fetched<Observation>> => {
-      const res = await client.getJson(latestObservationUrl(stationId), opts);
-      return { ...res, data: parseObservation(res.data, stationId) };
+      return client.getJson(latestObservationUrl(stationId), {
+        ...opts,
+        parse: (json) => parseObservation(json, stationId),
+      });
     }),
   );
 

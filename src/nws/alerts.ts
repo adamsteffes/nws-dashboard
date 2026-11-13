@@ -1,4 +1,5 @@
 import type { Fetched, NwsClient } from "./client";
+import { roundCoord } from "./points";
 
 export type Severity = "Extreme" | "Severe" | "Moderate" | "Minor" | "Unknown";
 
@@ -79,7 +80,8 @@ function parseAlert(feature: unknown): Alert | null {
 
 export function parseAlerts(json: unknown): Alert[] {
   const features = isRecord(json) ? json.features : undefined;
-  if (!Array.isArray(features)) return [];
+  // Throwing keeps a malformed body out of the cache.
+  if (!Array.isArray(features)) throw new Error("Invalid alerts response");
   const alerts: Alert[] = [];
   for (const feature of features) {
     const alert = parseAlert(feature);
@@ -104,10 +106,8 @@ export function highestSeverity(alerts: Alert[]): Severity | null {
   return best;
 }
 
-const round4 = (n: number): number => Math.round(n * 10_000) / 10_000;
-
 export function alertsUrl(lat: number, lon: number): string {
-  return `https://api.weather.gov/alerts/active?point=${round4(lat)},${round4(lon)}`;
+  return `https://api.weather.gov/alerts/active?point=${roundCoord(lat)},${roundCoord(lon)}`;
 }
 
 export async function fetchAlerts(
@@ -116,6 +116,5 @@ export async function fetchAlerts(
   lon: number,
   opts: { refresh?: boolean } = {},
 ): Promise<Fetched<Alert[]>> {
-  const res = await client.getJson(alertsUrl(lat, lon), opts);
-  return { ...res, data: parseAlerts(res.data) };
+  return client.getJson(alertsUrl(lat, lon), { ...opts, parse: parseAlerts });
 }

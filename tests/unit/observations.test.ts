@@ -83,6 +83,11 @@ describe("parseObservation", () => {
     }
   });
 
+  it("throws when properties are missing", () => {
+    expect(() => parseObservation({})).toThrow();
+    expect(() => parseObservation(null)).toThrow();
+  });
+
   it("prefers the explicit station id over the station URL", () => {
     expect(
       parseObservation(fixture("obs_latest_nulls"), "KABC").stationId,
@@ -270,6 +275,18 @@ describe("fetchLatestObservation", () => {
     expect(res.ageMinutes).toBe(300);
   });
 
+  it("serves the previous observation as stale after a malformed refresh", async () => {
+    const { client } = setup({
+      [url("A")]: [ok(obsBody("A", 20, minutesAgo(10))), ok({ nope: true })],
+    });
+    await fetchLatestObservation(client, ["A"], NOW);
+    const res = await fetchLatestObservation(client, ["A"], NOW, {
+      refresh: true,
+    });
+    expect(res.stale).toBe(true);
+    expect(res.data.temperatureF).toBe(68);
+  });
+
   describe("last-good fallback", () => {
     const storing = (stored: Record<string, unknown>): LastGood => ({
       ...noStore,
@@ -287,7 +304,9 @@ describe("fetchLatestObservation", () => {
     it("passes stale through and computes age from the observation time", async () => {
       const { client } = setup(
         { [url("A")]: [503, 503, 503] },
-        storing({ [url("A")]: obsBody("A", 20, minutesAgo(45)) }),
+        storing({
+          [url("A")]: parseObservation(obsBody("A", 20, minutesAgo(45))),
+        }),
       );
       const res = await fetchLatestObservation(client, ["A"], NOW);
       expect(res.stale).toBe(true);
@@ -301,7 +320,9 @@ describe("fetchLatestObservation", () => {
           [url("A")]: [503, 503, 503],
           [url("B")]: ok(obsBody("B", 10, minutesAgo(5))),
         },
-        storing({ [url("A")]: obsBody("A", 20, minutesAgo(200)) }),
+        storing({
+          [url("A")]: parseObservation(obsBody("A", 20, minutesAgo(200))),
+        }),
       );
       const res = await fetchLatestObservation(client, ["A", "B"], NOW);
       expect(res.data.stationId).toBe("B");
