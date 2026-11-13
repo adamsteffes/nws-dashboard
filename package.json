@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "lint": "biome ci .",
     "format": "biome format --write .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "record-fixtures": "node scripts/record-fixtures.ts"
   },
   "dependencies": {
     "lit-html": "^3.3.3"

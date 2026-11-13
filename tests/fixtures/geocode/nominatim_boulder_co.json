@@ -1,0 +1,39 @@
+[
+  {
+    "place_id": 200001,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "relation",
+    "osm_id": 2000010,
+    "lat": "40.0149856",
+    "lon": "-105.270545",
+    "category": "place",
+    "type": "city",
+    "place_rank": 25,
+    "importance": 0.62,
+    "addresstype": "city",
+    "name": "Boulder",
+    "display_name": "Boulder, Boulder County, Colorado, United States",
+    "boundingbox": [
+      "39.9149856",
+      "40.114985600000004",
+      "-105.37054499999999",
+      "-105.170545"
+    ]
+  },
+  {
+    "place_id": 200002,
+    "licence": "Data © OpenStreetMap contributors, ODbL 1.0. http://osm.org/copyright",
+    "osm_type": "relation",
+    "osm_id": 2000020,
+    "lat": "40.0274",
+    "lon": "-105.2519",
+    "category": "place",
+    "type": "suburb",
+    "place_rank": 25,
+    "importance": 0.31,
+    "addresstype": "suburb",
+    "name": "Boulder",
+    "display_name": "Boulder, Boulder County, Colorado, 80302, United States",
+    "boundingbox": ["39.9274", "40.1274", "-105.3519", "-105.15190000000001"]
+  }
+]

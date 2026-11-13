@@ -28,3 +28,8 @@ In the repository, go to Settings → Pages → Build and deployment → Source 
 
 - [x] Step 1: project scaffold and CI
 - [x] Step 2: GitHub Pages deployment
+- [x] Step 3: recorded API fixtures and fixture recorder
+
+## Test data
+
+Unit tests use recorded NWS API responses and a few hand-written edge cases. See [tests/fixtures/README.md](tests/fixtures/README.md) for how they are produced and re-recorded.
