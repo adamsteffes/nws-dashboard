@@ -59,9 +59,11 @@ export function describeFailure(e: unknown): string {
   return PARSE_MESSAGE;
 }
 
-type Loaded<T> = { data: T; fetchedAt: string; stale: boolean };
+export type Loaded<T> = { data: T; fetchedAt: string; stale: boolean };
 
-async function settle<T>(work: () => Promise<Loaded<T>>): Promise<Panel<T>> {
+export async function settle<T>(
+  work: () => Promise<Loaded<T>>,
+): Promise<Panel<T>> {
   try {
     const { data, fetchedAt, stale } = await work();
     return { status: stale ? "stale" : "ok", data, fetchedAt };
@@ -70,7 +72,7 @@ async function settle<T>(work: () => Promise<Loaded<T>>): Promise<Panel<T>> {
   }
 }
 
-async function lookUpMeta(
+export async function lookUpMeta(
   ctx: AppContext,
   location: SavedLocation,
   {
@@ -92,6 +94,38 @@ async function lookUpMeta(
     // Storage is read-only; this load can still use the meta.
   }
   return meta;
+}
+
+/**
+ * Fetches with the known metadata; on a 404 (the grid cell moved or was
+ * retired) re-resolves and tries once more. A second 404 is final.
+ */
+export async function fetchRetryingOnce<T>(
+  known: NwsMeta,
+  reResolve: () => Promise<NwsMeta>,
+  fetchWith: (meta: NwsMeta) => Promise<T>,
+): Promise<T> {
+  try {
+    return await fetchWith(known);
+  } catch (e) {
+    if (!(e instanceof NwsNotFound)) throw e;
+    return fetchWith(await reResolve());
+  }
+}
+
+export async function loadObservation(
+  ctx: AppContext,
+  meta: NwsMeta,
+  refresh: boolean,
+): Promise<Loaded<LatestObservation>> {
+  if (meta.stationIds.length === 0) throw new NoStationsError();
+  const latest = await fetchLatestObservation(
+    ctx.client,
+    meta.stationIds,
+    ctx.now(),
+    { refresh },
+  );
+  return { data: latest, fetchedAt: latest.fetchedAt, stale: latest.stale };
 }
 
 /**
@@ -119,32 +153,16 @@ export async function loadLocationSummary(
   }
   const known: NwsMeta = meta;
 
-  const forecast = async () => {
-    try {
-      return await fetchForecast(client, known.forecastUrl, { refresh });
-    } catch (e) {
-      // The grid cell moved or was retired. Re-resolve once; a second 404 is final.
-      if (!(e instanceof NwsNotFound)) throw e;
-      const next = await lookUpMeta(ctx, location, {
-        refresh: true,
-        onMeta,
-      });
-      return fetchForecast(client, next.forecastUrl, { refresh });
-    }
-  };
+  const forecast = () =>
+    fetchRetryingOnce(
+      known,
+      () => lookUpMeta(ctx, location, { refresh: true, onMeta }),
+      (meta) => fetchForecast(client, meta.forecastUrl, { refresh }),
+    );
 
   const [alerts, current, forecastPanel] = await Promise.all([
     settle(() => fetchAlerts(client, location.lat, location.lon, { refresh })),
-    settle(async () => {
-      if (known.stationIds.length === 0) throw new NoStationsError();
-      const latest = await fetchLatestObservation(
-        client,
-        known.stationIds,
-        ctx.now(),
-        { refresh },
-      );
-      return { data: latest, fetchedAt: latest.fetchedAt, stale: latest.stale };
-    }),
+    settle(() => loadObservation(ctx, known, refresh)),
     settle(async () => {
       const fetched = await forecast();
       return {

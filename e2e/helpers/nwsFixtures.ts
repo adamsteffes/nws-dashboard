@@ -46,7 +46,7 @@ export interface DashboardControl {
 }
 
 /**
- * Answers everything the dashboard needs for Linn, KS. Tests change `control`
+ * Answers everything the dashboard and detail page need for Linn, KS. Tests change `control`
  * between requests to vary the responses.
  */
 export function createDashboardRoutes(): {
@@ -60,6 +60,8 @@ export function createDashboardRoutes(): {
   };
   const bodies: Record<string, () => string> = {
     [`${API}/gridpoints/TOP/32,81/forecast`]: () => fixture("forecast_linn-ks"),
+    [`${API}/gridpoints/TOP/32,81/forecast/hourly`]: () =>
+      fixture("forecast_hourly_linn-ks"),
     [`${API}/stations/KMYZ/observations/latest`]: () =>
       fixture("obs_latest_linn-ks_KMYZ"),
     [`${API}/stations/KCNK/observations/latest`]: () =>

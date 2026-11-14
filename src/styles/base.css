@@ -569,6 +569,162 @@ textarea {
   object-fit: contain;
 }
 
+/* Location detail page */
+.two-col > * {
+  min-width: 0;
+}
+
+.loc-detail-head h2,
+.loc-detail-head p {
+  margin: 0;
+}
+
+h4 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.pre-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.alert-item {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.alert-item + .alert-item {
+  margin-top: 8px;
+}
+
+.alert-item summary,
+.period-details summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-height: 44px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.period-details summary {
+  padding-left: 0;
+  color: var(--link);
+}
+
+.alert-event {
+  font-weight: 700;
+}
+
+.alert-body {
+  padding: 4px 12px 12px;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+
+.facts > div {
+  min-width: 0;
+}
+
+.facts dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.facts dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.detail-periods > li {
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-periods > li:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.detail-periods p,
+.detail-periods details p {
+  margin: 0;
+}
+
+.period-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* The table scrolls inside this box so the page itself never scrolls sideways. */
+.table-scroll {
+  max-height: 70vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overscroll-behavior: contain;
+}
+
+.hourly {
+  width: 100%;
+  min-width: 36rem;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hourly th,
+.hourly td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: normal;
+}
+
+.hourly td:last-child {
+  min-width: 10rem;
+}
+
+.hourly thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+}
+
+.hourly tbody th[scope="row"] {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.hourly thead th:first-child {
+  left: 0;
+  z-index: 3;
+}
+
+.hourly .day-row th {
+  background: var(--bg);
+  font-size: 0.875rem;
+}
+
+.hourly .day-row th span {
+  position: sticky;
+  left: 10px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

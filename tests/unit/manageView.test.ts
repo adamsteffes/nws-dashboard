@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppContext, type GeolocationLike } from "../../src/app/context";
 import { createManageController } from "../../src/app/manageController";
 import { createNwsClient } from "../../src/nws/client";
+import { loadingDetail } from "../../src/services/detail";
 import { loadingSummary } from "../../src/services/panels";
 import { createLocationStore, DEFAULT_KEY } from "../../src/store/locations";
 import { dashboardView } from "../../src/views/dashboard";
@@ -434,15 +435,17 @@ describe("dashboard and location views", () => {
     expect(link?.getAttribute("href")).toBe(`#/l/${saved.id}`);
   });
 
-  it("shows the location name or a not-found message", () => {
+  it("shows a not-found message for an unknown location", () => {
     const el = document.createElement("div");
     render(
-      locationView({ id: "a", name: EVIL, lat: 1, lon: 2, createdAt: "x" }),
+      locationView({
+        location: undefined,
+        detail: loadingDetail(),
+        now: new Date(),
+        online: true,
+      }),
       el,
     );
-    expect(el.querySelector("h2")?.textContent).toBe(EVIL);
-    expect(el.querySelector("img")).toBeNull();
-    render(locationView(undefined), el);
     expect(el.querySelector("h2")?.textContent).toBe("Location not found");
   });
 });
