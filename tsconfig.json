@@ -4,7 +4,7 @@
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
-    "types": ["vite/client", "node"],
+    "types": ["vite/client", "vite-plugin-pwa/client", "node"],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
@@ -20,6 +20,7 @@
     "scripts",
     "e2e",
     "vite.config.ts",
+    "pwa-assets.config.ts",
     "playwright.config.ts"
   ]
 }

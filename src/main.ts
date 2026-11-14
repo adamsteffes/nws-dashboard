@@ -1,5 +1,19 @@
 import { render } from "lit-html";
 import "./styles/base.css";
+import {
+  currentInstallHintEnv,
+  dismissInstallHint,
+  installHintView,
+  shouldShowInstallHint,
+} from "./pwa/installHint";
+import {
+  dismissNeedRefresh,
+  dismissOfflineReady,
+  getPwaState,
+  registerPwa,
+  subscribePwa,
+} from "./pwa/register";
+import { updatePromptView } from "./pwa/updatePrompt";
 import { createRouter, parseRoute, type Route, routeHref } from "./router";
 import { dashboardView } from "./views/dashboard";
 import { discussionView } from "./views/discussion";
@@ -49,6 +63,7 @@ function routeContent(route: Route) {
 let route = parseRoute(window.location.hash);
 let online = navigator.onLine;
 const refreshing = false;
+let installHintVisible = shouldShowInstallHint(currentInstallHintEnv());
 
 function update() {
   const title = pageTitle(route);
@@ -64,6 +79,20 @@ function update() {
       onRefresh: update,
       content: routeContent(route),
       version: __APP_VERSION__,
+      notices: updatePromptView({
+        ...getPwaState(),
+        onReload: () => void getPwaState().update(),
+        onLater: dismissNeedRefresh,
+        onDismissOfflineReady: dismissOfflineReady,
+      }),
+      hint: installHintView({
+        visible: installHintVisible,
+        onDismiss: () => {
+          dismissInstallHint();
+          installHintVisible = false;
+          update();
+        },
+      }),
     }),
     root,
   );
@@ -89,3 +118,8 @@ window.addEventListener("offline", () => {
 });
 
 update();
+subscribePwa(update);
+
+// Ask the browser not to evict saved locations under storage pressure; the result is advisory.
+void Promise.resolve(navigator.storage?.persist?.()).catch(() => {});
+void registerPwa();

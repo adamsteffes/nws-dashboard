@@ -9,6 +9,10 @@ export interface LayoutProps {
   onRefresh: () => void;
   content: TemplateResult;
   version: string;
+  /** Update / offline-ready notices; rendered inside the live region so they are announced. */
+  notices?: TemplateResult | typeof nothing;
+  /** Static hint shown below the live region (not announced on every load). */
+  hint?: TemplateResult | typeof nothing;
 }
 
 function current(active: boolean) {
@@ -22,8 +26,17 @@ function skipToMain(event: Event) {
 }
 
 export function layoutView(props: LayoutProps): TemplateResult {
-  const { route, title, online, refreshing, onRefresh, content, version } =
-    props;
+  const {
+    route,
+    title,
+    online,
+    refreshing,
+    onRefresh,
+    content,
+    version,
+    notices = nothing,
+    hint = nothing,
+  } = props;
   const onDashboard =
     route.name === "dashboard" ||
     route.name === "location" ||
@@ -40,7 +53,8 @@ export function layoutView(props: LayoutProps): TemplateResult {
         ${refreshing ? "Refreshing…" : "Refresh"}
       </button>
     </header>
-    <div class="banner-region" role="status" aria-live="polite">${online ? nothing : html`<div class="banner banner-offline">You're offline — showing saved data</div>`}</div>
+    <div class="banner-region" role="status" aria-live="polite">${online ? nothing : html`<div class="banner banner-offline">You're offline — showing saved data</div>`}${notices}</div>
+    ${hint}
     <main id="main" class="app-main" tabindex="-1">${content}</main>
     <footer class="app-footer">
       <span class="version">Version ${version}</span>

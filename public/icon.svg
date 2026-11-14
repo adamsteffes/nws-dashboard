@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <title>NWS Weather</title>
+  <rect width="512" height="512" fill="#0b5cc2"/>
+  <g stroke="#ffc933" stroke-width="22" stroke-linecap="round">
+    <path d="M300 78v36M389 115l-25 25M426 204h-36M211 115l25 25M389 293l-25-25"/>
+  </g>
+  <circle cx="300" cy="204" r="68" fill="#ffc933"/>
+  <path fill="#ffffff" d="M170 410a80 80 0 0 1-8-159 100 100 0 0 1 189-20 84 84 0 0 1 17 179z"/>
+</svg>
