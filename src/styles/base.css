@@ -725,6 +725,85 @@ textarea {
   left: 10px;
 }
 
+/* Forecast discussion */
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  min-height: 44px;
+  min-width: 44px;
+  font-weight: 700;
+}
+
+.afd-page {
+  font-size: 1.05rem;
+}
+
+.afd-page h2,
+.afd-page h3 {
+  margin: 0;
+}
+
+.afd-toggle {
+  align-self: flex-start;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.afd-toggle[aria-pressed="true"] {
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+}
+
+/* pre-wrap keeps the fixed-width layout where it fits and wraps the rest, so 320px never scrolls sideways. */
+.afd-text {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family:
+    ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.afd-section {
+  scroll-margin-top: 8px;
+}
+
+.afd-section h3 {
+  margin-bottom: 8px;
+}
+
+.afd-section h3:focus {
+  outline: none;
+}
+
+.afd-toc ol,
+.afd-history ul {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.afd-page .afd-toc a,
+.afd-page .afd-history a,
+.afd-page .afd-current {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+.afd-page .afd-current {
+  font-weight: 700;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

@@ -1,14 +1,13 @@
 import { html, type TemplateResult } from "lit-html";
 import type { Severity } from "../nws/alerts";
 import { CONUS_LOOP } from "../nws/radar";
-import { formatLocal, type TimeStyle } from "../util/time";
+import { formatLocalWithZone, type TimeStyle } from "../util/time";
+
+export { deviceZone, zoneAbbreviation } from "../util/time";
 
 // Radar images are 600x550; the box reserves that shape before the image loads.
 export const RADAR_WIDTH = 600;
 export const RADAR_HEIGHT = 550;
-
-export const deviceZone = (): string =>
-  Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export const degrees = (t: number | null): string =>
   t === null ? "—" : `${t}°`;
@@ -24,22 +23,16 @@ export function errorNote(
   return html`<p class="panel-note error">${label}: ${message ?? "Unavailable"}</p>`;
 }
 
+type ZoneOptions = { alwaysZone?: boolean };
+
 export const dayKey = (date: Date, zone: string): string =>
   new Intl.DateTimeFormat("en-CA", { timeZone: zone }).format(date);
-
-export function zoneAbbreviation(date: Date, zone: string): string | undefined {
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: zone,
-    timeZoneName: "short",
-  })
-    .formatToParts(date)
-    .find((part) => part.type === "timeZoneName")?.value;
-}
 
 export function staleNote(
   fetchedAt: string | undefined,
   zone: string,
   now: Date,
+  opts: ZoneOptions = {},
 ): TemplateResult {
   const saved = fetchedAt ? new Date(fetchedAt) : null;
   if (!fetchedAt || !saved || Number.isNaN(saved.getTime())) {
@@ -47,12 +40,12 @@ export function staleNote(
   }
   // A bare time is ambiguous for data from an earlier day.
   const today = dayKey(saved, zone) === dayKey(now, zone);
-  let when = formatLocal(fetchedAt, zone, today ? "time" : "dateTime");
-  // The location's clock differs from the device's, so say whose it is.
-  if (zone !== deviceZone()) {
-    const abbreviation = zoneAbbreviation(saved, zone);
-    if (abbreviation) when = `${when} ${abbreviation}`;
-  }
+  const when = formatLocalWithZone(
+    fetchedAt,
+    zone,
+    today ? "time" : "dateTime",
+    opts,
+  );
   return html`<p class="panel-note muted">Showing saved data from ${when}</p>`;
 }
 
@@ -79,11 +72,12 @@ export function resetRadarOnLoad(event: Event): void {
   img.alt = img.dataset.alt ?? img.alt;
 }
 
-/** A time in the location's zone; names the zone when it differs from the device's. */
-export function localTime(iso: string, zone: string, style: TimeStyle): string {
-  const when = formatLocal(iso, zone, style);
-  const date = new Date(iso);
-  if (zone === deviceZone() || Number.isNaN(date.getTime())) return when;
-  const abbreviation = zoneAbbreviation(date, zone);
-  return abbreviation ? `${when} ${abbreviation}` : when;
+/** A time in the location's zone; names the zone when it differs from the device's (or always, with `alwaysZone`). */
+export function localTime(
+  iso: string,
+  zone: string,
+  style: TimeStyle,
+  opts: ZoneOptions = {},
+): string {
+  return formatLocalWithZone(iso, zone, style, opts);
 }

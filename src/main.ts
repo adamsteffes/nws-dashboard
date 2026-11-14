@@ -1,6 +1,7 @@
 import { render } from "lit-html";
 import { createAppContext } from "./app/context";
 import { createDashboardController } from "./app/dashboardController";
+import { createDiscussionController } from "./app/discussionController";
 import { createLocationController } from "./app/locationController";
 import { createManageController } from "./app/manageController";
 import "./styles/base.css";
@@ -38,6 +39,9 @@ const root: HTMLElement = app;
 const ctx = createAppContext();
 const manage = createManageController(ctx, { onChange: () => update() });
 const dashboard = createDashboardController(ctx, { onChange: () => update() });
+const discussion = createDiscussionController(ctx, {
+  onChange: () => update(),
+});
 const locationPage = createLocationController(ctx, {
   onChange: () => update(),
 });
@@ -67,7 +71,9 @@ function routeContent(route: Route) {
     case "location":
       return locationView(locationPage.viewProps(route.id));
     case "discussion":
-      return discussionView(route.id, route.productId);
+      return discussionView(discussion.viewProps(), {
+        onSections: (on) => discussion.setSections(on),
+      });
     case "manage":
       return manageView(manage.viewProps());
     case "notFound":
@@ -90,11 +96,15 @@ function update() {
       refreshing:
         route.name === "location"
           ? locationPage.refreshing
-          : dashboard.refreshing,
+          : route.name === "discussion"
+            ? discussion.refreshing
+            : dashboard.refreshing,
       onRefresh: () =>
         void (route.name === "location"
           ? locationPage.refresh()
-          : dashboard.load({ refresh: true })),
+          : route.name === "discussion"
+            ? discussion.refresh()
+            : dashboard.load({ refresh: true })),
       content: routeContent(route),
       version: __APP_VERSION__,
       notices: updatePromptView({
@@ -125,6 +135,9 @@ createRouter((next) => {
   // Stale confirms and messages from an earlier visit shouldn't greet the user.
   if (next.name === "manage" && route.name !== "manage") manage.reset();
   route = next;
+  if (changed && next.name === "discussion") {
+    void discussion.open(next.id, next.productId);
+  }
   update();
   if (
     next.name === "dashboard" &&
@@ -133,6 +146,7 @@ createRouter((next) => {
     void dashboard.load();
   }
   if (next.name !== "location") locationPage.close();
+  if (next.name !== "discussion") discussion.close();
   if (next.name === "location" && changed) void locationPage.open(next.id);
   if (changed) {
     // Screen readers get no page load, so announce the new page by focusing its heading.
@@ -154,6 +168,9 @@ ctx.store.subscribe(update);
 
 update();
 if (route.name === "dashboard") void dashboard.load();
+if (route.name === "discussion") {
+  void discussion.open(route.id, route.productId);
+}
 if (route.name === "location") void locationPage.open(route.id);
 subscribePwa(update);
 
