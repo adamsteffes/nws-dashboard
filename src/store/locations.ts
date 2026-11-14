@@ -74,6 +74,8 @@ export type LocationStore = {
   discardCorrupt(): void;
   /** Backup copies of unreadable data kept in storage, with their sizes. */
   listBackups(): { key: string; size: number }[];
+  /** The contents of one of the keys from listBackups(), for export. */
+  readBackup(key: string): string | null;
   /** Deletes the backup copies; re-checks whether current data needs one. */
   clearBackups(): void;
   /**
@@ -347,6 +349,36 @@ const NEWER_VERSION =
   "Your saved locations were saved by a newer version of this app, so changes are paused — reload to update.";
 const MAX_BACKUPS = 3;
 
+/** Adds `incoming` to `current`, skipping duplicates and fixing id clashes. */
+function mergeEntries(
+  current: SavedLocation[],
+  incoming: SavedLocation[],
+): MergeResult & { merged: SavedLocation[] } {
+  const merged = [...current];
+  const taken = new Set(merged.map((l) => l.id));
+  const result = { added: 0, skipped: 0, warnings: [] as string[], merged };
+  for (const entry of incoming) {
+    const duplicate = merged.some(
+      (l) =>
+        l.lat === entry.lat && l.lon === entry.lon && l.name === entry.name,
+    );
+    if (duplicate) {
+      result.skipped++;
+      continue;
+    }
+    const id = uniqueId(entry.id, taken);
+    if (id !== entry.id) {
+      result.warnings.push(
+        `"${entry.name}" was given the id "${id}" because "${entry.id}" is already in use.`,
+      );
+    }
+    taken.add(id);
+    merged.push({ ...entry, id });
+    result.added++;
+  }
+  return result;
+}
+
 const copyLocation = (l: SavedLocation): SavedLocation => {
   const copy = { ...l };
   if (l.nws !== undefined) {
@@ -373,6 +405,9 @@ export function createLocationStore(
   // disk to protect, so changes live in memory and never count as failures.
   let memoryOnly = storage === undefined;
   let persistent = !memoryOnly;
+  // A write failed while nothing was stored: changes wait in memory and are
+  // retried on the next change, unlike memoryOnly which never touches storage.
+  let degraded = false;
   let readOnlyKind: ReadOnlyKind | null = null;
   // The raw string last read from or written to `key`, to spot other tabs.
   let lastRaw: string | null = null;
@@ -499,7 +534,10 @@ export function createLocationStore(
       return false;
     }
     if (raw === lastRaw) return false;
+    // Another tab wrote while our changes were only in memory: keep both.
+    const pending = degraded ? locations : [];
     load();
+    if (pending.length > 0) locations = mergeEntries(locations, pending).merged;
     return true;
   }
 
@@ -511,6 +549,7 @@ export function createLocationStore(
       storage.setItem(key, raw);
       lastRaw = raw;
       persistent = true;
+      degraded = false;
       return true;
     } catch (error) {
       persistent = false;
@@ -518,7 +557,7 @@ export function createLocationStore(
       if (lastRaw !== null) return false;
       // Nothing on disk to protect (e.g. Safari private mode): keep going in
       // memory rather than refusing every change.
-      memoryOnly = true;
+      degraded = true;
       return true;
     }
   }
@@ -576,7 +615,11 @@ export function createLocationStore(
         );
         return;
       }
-      if (refresh()) notify();
+      if (refresh()) {
+        // Ends the memory-only fallback: save what we merged.
+        if (degraded && readOnlyKind === null) persist();
+        notify();
+      }
     });
   }
 
@@ -652,34 +695,12 @@ export function createLocationStore(
       if (!parsed.ok) throw new RangeError(parsed.reason);
       const result: MergeResult = { added: 0, skipped: 0, warnings: [] };
       mutate((current) => {
-        // Reset so a retry after a refresh doesn't double count.
-        result.added = 0;
-        result.skipped = 0;
-        result.warnings = [];
-        const merged = [...current];
-        const taken = new Set(merged.map((l) => l.id));
-        for (const entry of parsed.locations) {
-          const duplicate = merged.some(
-            (l) =>
-              l.lat === entry.lat &&
-              l.lon === entry.lon &&
-              l.name === entry.name,
-          );
-          if (duplicate) {
-            result.skipped++;
-            continue;
-          }
-          const id = uniqueId(entry.id, taken);
-          if (id !== entry.id) {
-            result.warnings.push(
-              `"${entry.name}" was given the id "${id}" because "${entry.id}" is already in use.`,
-            );
-          }
-          taken.add(id);
-          merged.push({ ...entry, id });
-          result.added++;
-        }
-        return merged;
+        // A retry after a refresh must not double count.
+        const attempt = mergeEntries(current, parsed.locations);
+        result.added = attempt.added;
+        result.skipped = attempt.skipped;
+        result.warnings = attempt.warnings;
+        return attempt.merged;
       });
       return result;
     },
@@ -697,6 +718,14 @@ export function createLocationStore(
       if (corrupt) locations = [];
       corrupt = false;
       notify();
+    },
+    readBackup(backupKey) {
+      if (storage === undefined || !backupKeys.includes(backupKey)) return null;
+      try {
+        return storage.getItem(backupKey);
+      } catch {
+        return null;
+      }
     },
     listBackups() {
       if (storage === undefined) return [];

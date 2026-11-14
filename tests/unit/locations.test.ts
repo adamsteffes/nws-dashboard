@@ -525,6 +525,91 @@ describe("createLocationStore", () => {
       expect(storage.data.get(`${KEY}.corrupt`)).toBe("{bad");
     });
 
+    describe("memory-only fallback", () => {
+      const otherTabWrites = (storage: { data: Map<string, string> }) =>
+        storage.data.set(
+          KEY,
+          JSON.stringify({
+            version: 1,
+            locations: [{ id: "b", name: "FromB", lat: 2, lon: 2 }],
+          }),
+        );
+      const savedNames = (storage: { data: Map<string, string> }) =>
+        JSON.parse(storage.data.get(KEY) ?? "{}").locations.map(
+          (l: { name: string }) => l.name,
+        );
+
+      it("recovers after a transient write failure", () => {
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        const opts = { failWrites: true };
+        const storage = createMemoryStorage(opts);
+        const store = createLocationStore({ storage });
+        const fn = vi.fn();
+        store.add({ name: "One", lat: 1, lon: 1 });
+        expect(store.persistent).toBe(false);
+        store.subscribe(fn);
+        opts.failWrites = false;
+        store.add({ name: "Two", lat: 2, lon: 2 });
+        expect(store.persistent).toBe(true);
+        expect(fn).toHaveBeenCalled();
+        expect(savedNames(storage)).toEqual(["One", "Two"]);
+      });
+
+      it("merges another tab's data into unsaved changes", () => {
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        const opts = { failWrites: true };
+        const storage = createMemoryStorage(opts);
+        const store = createLocationStore({ storage });
+        store.add({ name: "One", lat: 1, lon: 1 });
+        otherTabWrites(storage);
+        opts.failWrites = false;
+        store.add({ name: "Two", lat: 3, lon: 3 });
+        expect(store.list().map((l) => l.name)).toEqual([
+          "FromB",
+          "One",
+          "Two",
+        ]);
+        expect(savedNames(storage)).toEqual(["FromB", "One", "Two"]);
+        expect(store.persistent).toBe(true);
+      });
+
+      it("keeps the merged state in memory when the save still fails", () => {
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        const storage = createMemoryStorage({ failWrites: true });
+        const store = createLocationStore({ storage });
+        store.add({ name: "One", lat: 1, lon: 1 });
+        otherTabWrites(storage);
+        expect(() => store.add({ name: "Two", lat: 3, lon: 3 })).toThrow(
+          /Couldn't save/,
+        );
+        expect(store.list().map((l) => l.name)).toEqual(["FromB", "One"]);
+        expect(savedNames(storage)).toEqual(["FromB"]);
+      });
+
+      it("ends the fallback on a storage event", () => {
+        vi.spyOn(console, "warn").mockImplementation(() => {});
+        const opts = { failWrites: true };
+        const storage = createMemoryStorage(opts);
+        const store = createLocationStore({ storage });
+        store.add({ name: "One", lat: 1, lon: 1 });
+        otherTabWrites(storage);
+        opts.failWrites = false;
+        window.dispatchEvent(new StorageEvent("storage", { key: KEY }));
+        expect(store.list().map((l) => l.name)).toEqual(["FromB", "One"]);
+        expect(savedNames(storage)).toEqual(["FromB", "One"]);
+        expect(store.persistent).toBe(true);
+      });
+    });
+
+    it("reads backups only from the known backup keys", () => {
+      const storage = createMemoryStorage();
+      storage.data.set(KEY, "{bad");
+      const store = createLocationStore({ storage });
+      expect(store.readBackup(`${KEY}.corrupt`)).toBe("{bad");
+      expect(store.readBackup(`${KEY}.corrupt-2`)).toBeNull();
+      expect(store.readBackup(KEY)).toBeNull();
+    });
+
     it("checks existence against fresh data for rename and remove", () => {
       const storage = createMemoryStorage();
       const a = createLocationStore({ storage });
