@@ -85,7 +85,12 @@ export async function registerPwa(): Promise<void> {
     onOfflineReady: () => setState({ offlineReady: true }),
     onRegisteredSW: (_url, registration) =>
       void schedulePeriodicUpdateChecks(registration),
+    // Not fatal: the app works without offline support (e.g. when the browser blocks
+    // service workers in private browsing or by policy), so warn rather than error.
     onRegisterError: (error) =>
-      console.error("Service worker registration failed", error),
+      console.warn(
+        "Offline support unavailable: service worker registration failed",
+        error,
+      ),
   });
 }
