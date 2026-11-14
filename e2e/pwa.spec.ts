@@ -52,6 +52,9 @@ test.describe("manifest and icons", () => {
 });
 
 test.describe("service worker", () => {
+  // These tests exercise the worker, so re-enable it (blocked by default in the config).
+  test.use({ serviceWorkers: "allow" });
+
   test.skip(
     ({ browserName }) => browserName !== "chromium",
     "Service workers are only exercised on Chromium; WebKit in Playwright is not a reliable SW host.",

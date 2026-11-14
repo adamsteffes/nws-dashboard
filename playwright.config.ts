@@ -13,6 +13,10 @@ export default defineConfig({
     baseURL,
     trace: isCI ? "retain-on-failure" : "off",
     screenshot: "only-on-failure",
+    // Requests made by the service worker bypass page.route() on WebKit, so with the
+    // worker active the mocked NWS routes can be skipped and the live API reached.
+    // Block it everywhere except the specs that test the worker itself.
+    serviceWorkers: "block",
   },
   webServer: {
     command: "npm run build && npx vite preview --port 4173 --strictPort",

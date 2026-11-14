@@ -1,5 +1,6 @@
 import { render } from "lit-html";
 import { createAppContext } from "./app/context";
+import { createDashboardController } from "./app/dashboardController";
 import { createManageController } from "./app/manageController";
 import "./styles/base.css";
 import {
@@ -35,6 +36,10 @@ const root: HTMLElement = app;
 
 const ctx = createAppContext();
 const manage = createManageController(ctx, { onChange: () => update() });
+const dashboard = createDashboardController(ctx, { onChange: () => update() });
+
+// Data older than this is reloaded when the dashboard is opened.
+const DASHBOARD_MAX_AGE_MS = 5 * 60_000;
 
 function pageTitle(route: Route): string {
   switch (route.name) {
@@ -54,7 +59,7 @@ function pageTitle(route: Route): string {
 function routeContent(route: Route) {
   switch (route.name) {
     case "dashboard":
-      return dashboardView(ctx.store.list());
+      return dashboardView(dashboard.viewProps());
     case "location":
       return locationView(ctx.store.get(route.id));
     case "discussion":
@@ -67,8 +72,6 @@ function routeContent(route: Route) {
 }
 
 let route = parseRoute(window.location.hash);
-let online = navigator.onLine;
-const refreshing = false;
 let installHintVisible = shouldShowInstallHint(currentInstallHintEnv());
 
 function update() {
@@ -79,10 +82,9 @@ function update() {
     layoutView({
       route,
       title,
-      online,
-      refreshing,
-      // Data loading is wired in by later steps; for now refresh just re-renders.
-      onRefresh: update,
+      online: dashboard.online,
+      refreshing: dashboard.refreshing,
+      onRefresh: () => void dashboard.load({ refresh: true }),
       content: routeContent(route),
       version: __APP_VERSION__,
       notices: updatePromptView({
@@ -114,6 +116,12 @@ createRouter((next) => {
   if (next.name === "manage" && route.name !== "manage") manage.reset();
   route = next;
   update();
+  if (
+    next.name === "dashboard" &&
+    dashboard.isOlderThan(DASHBOARD_MAX_AGE_MS)
+  ) {
+    void dashboard.load();
+  }
   if (changed) {
     // Screen readers get no page load, so announce the new page by focusing its heading.
     document.querySelector<HTMLElement>("#page-title")?.focus();
@@ -121,18 +129,17 @@ createRouter((next) => {
 });
 
 window.addEventListener("online", () => {
-  online = true;
-  update();
+  dashboard.setOnline(true);
 });
 window.addEventListener("offline", () => {
-  online = false;
-  update();
+  dashboard.setOnline(false);
 });
 
 // Also fires for changes made in another tab.
 ctx.store.subscribe(update);
 
 update();
+if (route.name === "dashboard") void dashboard.load();
 subscribePwa(update);
 
 // Ask the browser not to evict saved locations under storage pressure; the result is advisory.
