@@ -190,15 +190,32 @@ describe("createLocationStore", () => {
       expect(warn).toHaveBeenCalledTimes(1);
     });
 
-    it("refuses and rolls back when setItem throws, warning once", () => {
+    it("refuses and rolls back when writes fail over existing data", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const storage = createMemoryStorage({ failWrites: true });
+      const raw = JSON.stringify({
+        version: 1,
+        locations: [{ id: "a", name: "A", lat: 1, lon: 1 }],
+      });
+      storage.data.set(KEY, raw);
+      const store = createLocationStore({ storage });
+      expect(store.persistent).toBe(true);
+      expect(() => store.add(home)).toThrow(/Couldn't save/);
+      expect(() => store.add(home)).toThrow(/Couldn't save/);
+      expect(store.list().map((l) => l.id)).toEqual(["a"]);
+      expect(store.persistent).toBe(false);
+      expect(storage.data.get(KEY)).toBe(raw);
+      expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it("switches to memory when writes fail and nothing is stored", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const store = createLocationStore({
         storage: createMemoryStorage({ failWrites: true }),
       });
-      expect(store.persistent).toBe(true);
-      expect(() => store.add(home)).toThrow(/Couldn't save/);
-      expect(() => store.add(home)).toThrow(/Couldn't save/);
-      expect(store.list()).toEqual([]);
+      expect(() => store.add(home)).not.toThrow();
+      expect(() => store.add(home)).not.toThrow();
+      expect(store.list().map((l) => l.id)).toEqual(["home", "home-2"]);
       expect(store.persistent).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
     });
@@ -398,6 +415,125 @@ describe("createLocationStore", () => {
       expect(store.corrupt).toBe(false);
       expect(store.dropped).toBe(2);
       expect(store.list().map((l) => l.id)).toEqual(["home"]);
+    });
+  });
+
+  describe("review fixes", () => {
+    const backupFailure = (raw: string) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const storage = createMemoryStorage({
+        quotaBytes: raw.length + KEY.length + 20,
+      });
+      storage.data.set(KEY, raw);
+      return { storage, store: createLocationStore({ storage }) };
+    };
+
+    it("discardCorrupt keeps valid entries when only some were dropped", () => {
+      const raw = JSON.stringify({
+        version: 1,
+        locations: [
+          { id: "a", name: "Valid A", lat: 1, lon: 1 },
+          { id: "c", name: "Valid C", lat: 3, lon: 3 },
+          { id: "b", name: "", lat: 1, lon: 1 },
+        ],
+      });
+      const { store } = backupFailure(raw);
+      expect(store.readOnlyKind).toBe("backup");
+      expect(store.corrupt).toBe(false);
+      store.discardCorrupt();
+      expect(store.readOnly).toBe(false);
+      expect(store.list().map((l) => l.id)).toEqual(["a", "c"]);
+    });
+
+    it("discardCorrupt empties the list when the data was unreadable", () => {
+      const { store } = backupFailure(
+        `{"version":1,"locations":[${"x".repeat(50)}`,
+      );
+      expect(store.readOnlyKind).toBe("backup");
+      store.discardCorrupt();
+      expect(store.list()).toEqual([]);
+      expect(store.corrupt).toBe(false);
+    });
+
+    it("merges on top of another tab's write", () => {
+      const storage = createMemoryStorage();
+      const a = createLocationStore({ storage });
+      const b = createLocationStore({ storage });
+      a.add({ name: "FromA", lat: 1, lon: 1 });
+      const other = createLocationStore({ storage: createMemoryStorage() });
+      other.add({ name: "Imported", lat: 3, lon: 3 });
+      other.add({ name: "FromA", lat: 1, lon: 1 });
+      const result = b.merge(other.list());
+      expect(result).toMatchObject({ added: 1, skipped: 1 });
+      expect(b.list().map((l) => l.name)).toEqual(["FromA", "Imported"]);
+      const saved = JSON.parse(storage.data.get(KEY) ?? "");
+      expect(saved.locations).toHaveLength(2);
+    });
+
+    it("keeps suffixed ids within 45 characters and stable", () => {
+      const long = "a".repeat(45);
+      const store = createLocationStore({ storage: createMemoryStorage() });
+      const incoming = (id: string) => ({
+        id,
+        name: id.slice(0, 5),
+        lat: 1,
+        lon: Number(id.length),
+        createdAt: "2026-01-01T00:00:00.000Z",
+      });
+      store.replaceAll([incoming(long)]);
+      store.merge([
+        { ...incoming(long), lon: 9 },
+        { ...incoming(long), lon: 8 },
+      ]);
+      const ids = store.list().map((l) => l.id);
+      expect(ids[0]).toBe(long);
+      expect(ids[1]).toBe(`${"a".repeat(43)}-2`);
+      expect(ids[2]).toBe(`${"a".repeat(43)}-3`);
+      expect(ids.every((id) => id.length <= 45)).toBe(true);
+      const again = createLocationStore({ storage: createMemoryStorage() });
+      again.replaceAll(store.list());
+      expect(again.list().map((l) => l.id)).toEqual(ids);
+    });
+
+    it("reports a distinct reason when every backup slot is used", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const storage = createMemoryStorage();
+      for (const raw of ["{a", "{b", "{c", "{d"]) {
+        storage.data.set(KEY, raw);
+        createLocationStore({ storage });
+      }
+      const store = createLocationStore({ storage });
+      expect(store.readOnlyKind).toBe("backups-full");
+      expect(store.readOnlyReason).toMatch(/Too many saved backups/);
+      expect(store.listBackups()).toEqual([
+        { key: `${KEY}.corrupt`, size: 2 },
+        { key: `${KEY}.corrupt-2`, size: 2 },
+        { key: `${KEY}.corrupt-3`, size: 2 },
+      ]);
+      store.clearBackups();
+      expect(store.listBackups()).toEqual([{ key: `${KEY}.corrupt`, size: 2 }]);
+      expect(storage.data.get(`${KEY}.corrupt`)).toBe("{d");
+      expect(store.readOnly).toBe(false);
+      expect(storage.data.get(KEY)).toBe("{d");
+    });
+
+    it("re-backs up current data after backups are cleared", () => {
+      const storage = createMemoryStorage();
+      storage.data.set(KEY, "{bad");
+      const store = createLocationStore({ storage });
+      store.clearBackups();
+      expect(storage.data.get(`${KEY}.corrupt`)).toBe("{bad");
+    });
+
+    it("checks existence against fresh data for rename and remove", () => {
+      const storage = createMemoryStorage();
+      const a = createLocationStore({ storage });
+      const b = createLocationStore({ storage });
+      a.add(home);
+      expect(b.rename("home", "Cabin").name).toBe("Cabin");
+      a.add({ name: "Two", lat: 2, lon: 2 });
+      expect(b.remove("two")).toBe(true);
+      expect(b.remove("two")).toBe(false);
     });
   });
 

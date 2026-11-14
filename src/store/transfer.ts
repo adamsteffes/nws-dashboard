@@ -2,7 +2,6 @@ import {
   type LocationStore,
   type LocationsFile,
   parseLocationsFile,
-  uniqueId,
 } from "./locations";
 
 export type ValidationResult =
@@ -85,29 +84,13 @@ export function importLocations(
     return { added: incoming.length, replaced, skipped: 0, warnings };
   }
 
-  const merged = store.list();
-  const taken = new Set(merged.map((l) => l.id));
-  let added = 0;
-  let skipped = 0;
-  for (const entry of incoming) {
-    const duplicate = merged.some(
-      (l) =>
-        l.lat === entry.lat && l.lon === entry.lon && l.name === entry.name,
-    );
-    if (duplicate) {
-      skipped++;
-      continue;
-    }
-    const id = uniqueId(entry.id, taken);
-    if (id !== entry.id) {
-      warnings.push(
-        `"${entry.name}" was given the id "${id}" because "${entry.id}" is already in use.`,
-      );
-    }
-    taken.add(id);
-    merged.push({ ...entry, id });
-    added++;
-  }
-  store.replaceAll(merged);
-  return { added, replaced: 0, skipped, warnings };
+  // Merged inside the store so a change from another tab is not lost.
+  const merged = store.merge(incoming);
+  warnings.push(...merged.warnings);
+  return {
+    added: merged.added,
+    replaced: 0,
+    skipped: merged.skipped,
+    warnings,
+  };
 }

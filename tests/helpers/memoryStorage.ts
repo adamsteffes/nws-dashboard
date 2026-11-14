@@ -25,6 +25,9 @@ export function createMemoryStorage(
       if (options.failReads) throw new DOMException("denied", "SecurityError");
       return data.get(key) ?? null;
     },
+    removeItem: (key) => {
+      data.delete(key);
+    },
     setItem: (key, value) => {
       const text = String(value);
       const previous = data.has(key)

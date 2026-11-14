@@ -37,7 +37,7 @@ export type NewLocation = {
 };
 
 /** The subset of Storage the store needs, so tests can pass tiny fakes. */
-export type StorageLike = Pick<Storage, "getItem" | "setItem">;
+export type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
 
 export type LocationStoreOptions = {
   storage?: StorageLike;
@@ -63,18 +63,42 @@ export type LocationStore = {
   /** Changes are refused; see readOnlyReason for why. */
   readonly readOnly: boolean;
   readonly readOnlyReason: string | null;
+  /** Why changes are refused, if they are. */
+  readonly readOnlyKind: ReadOnlyKind | null;
   /**
-   * Gives up on unreadable data whose backup couldn't be saved, so the store
-   * accepts changes again (the next change overwrites it).
+   * Resumes changes after a backup couldn't be saved ("backup" or
+   * "backups-full"), knowingly giving up the data that couldn't be backed up:
+   * unreadable data is replaced by an empty list; for a file with dropped
+   * entries the valid entries are kept and only the dropped ones are lost.
    */
   discardCorrupt(): void;
+  /** Backup copies of unreadable data kept in storage, with their sizes. */
+  listBackups(): { key: string; size: number }[];
+  /** Deletes the backup copies; re-checks whether current data needs one. */
+  clearBackups(): void;
+  /**
+   * Adds entries inside the same read-modify-write as any other change.
+   * Entries whose id exists get a new id; identical name and coordinates are
+   * skipped.
+   */
+  merge(incoming: SavedLocation[]): MergeResult;
+};
+
+export type ReadOnlyKind = "backup" | "backups-full" | "newer";
+
+export type MergeResult = {
+  added: number;
+  skipped: number;
+  warnings: string[];
 };
 
 export const DEFAULT_KEY = "nwsdash:locations:v1";
 const MAX_NAME = 60;
 const MAX_SLUG = 40;
 /** Ids end up in URLs and DOM attributes, so keep them boring. */
+const MAX_ID = 45;
 const ID_PATTERN = /^[a-z0-9-]{1,45}$/;
+const ISO_START = /^\d{4}-\d{2}-\d{2}T/;
 
 export function metaFromPoint(
   point: PointInfo,
@@ -117,9 +141,13 @@ export function slugify(name: string): string {
 /** "home", then "home-2", "home-3"... skipping ids in `taken`. */
 export function uniqueId(base: string, taken: ReadonlySet<string>): string {
   if (!taken.has(base)) return base;
-  let n = 2;
-  while (taken.has(`${base}-${n}`)) n++;
-  return `${base}-${n}`;
+  for (let n = 2; ; n++) {
+    const suffix = `-${n}`;
+    // Trim the base so suffixed ids still satisfy the 45-character id limit.
+    const trimmed = base.slice(0, MAX_ID - suffix.length).replace(/-+$/, "");
+    const candidate = `${trimmed}${suffix}`;
+    if (!taken.has(candidate)) return candidate;
+  }
 }
 
 /** Returns a user-readable problem, or null when the input is acceptable. */
@@ -279,7 +307,9 @@ export function parseLocationsFile(
       lat: roundCoord(entry.lat as number),
       lon: roundCoord(entry.lon as number),
       createdAt:
-        isStr(entry.createdAt) && !Number.isNaN(Date.parse(entry.createdAt))
+        isStr(entry.createdAt) &&
+        ISO_START.test(entry.createdAt) &&
+        !Number.isNaN(Date.parse(entry.createdAt))
           ? entry.createdAt
           : nowIso,
     };
@@ -311,6 +341,8 @@ const SAVE_FAILED =
   "Couldn't save — storage is full or unavailable. Your change was not kept.";
 const BACKUP_FAILED =
   "Your saved locations couldn't be backed up, so changes are paused to avoid losing them. Free up browser storage and reload, or discard the unreadable data.";
+const BACKUPS_FULL =
+  "Too many saved backups of unreadable data are stored, so changes are paused to avoid losing more. Export or clear the old backups to continue.";
 const NEWER_VERSION =
   "Your saved locations were saved by a newer version of this app, so changes are paused — reload to update.";
 const MAX_BACKUPS = 3;
@@ -330,15 +362,18 @@ export function createLocationStore(
   const key = options.key ?? DEFAULT_KEY;
   const storage = "storage" in options ? options.storage : defaultStorage();
   const nowIso = () => new Date(clock()).toISOString();
+  const backupKeys = Array.from({ length: MAX_BACKUPS }, (_, i) =>
+    i === 0 ? `${key}.corrupt` : `${key}.corrupt-${i + 1}`,
+  );
 
   let locations: SavedLocation[] = [];
   let corrupt = false;
   let dropped = 0;
-  // In-memory mode: storage is missing or unreadable from the start, so
-  // changes are kept in memory only and never reported as failures.
+  // In-memory mode: storage is missing or unusable and there is nothing on
+  // disk to protect, so changes live in memory and never count as failures.
   let memoryOnly = storage === undefined;
   let persistent = !memoryOnly;
-  let readOnlyKind: "backup" | "newer" | null = null;
+  let readOnlyKind: ReadOnlyKind | null = null;
   // The raw string last read from or written to `key`, to spot other tabs.
   let lastRaw: string | null = null;
   let warned = false;
@@ -353,26 +388,31 @@ export function createLocationStore(
   if (memoryOnly) warnOnce("storage is unavailable.");
 
   /**
-   * Keeps a copy of data we are about to stop treating as authoritative.
-   * Uses `${key}.corrupt`, then `-2` and `-3` when an earlier, different copy
-   * is already there. Returns false if no copy could be guaranteed.
+   * Keeps a copy of data we are about to stop treating as authoritative, in
+   * the first free backup slot. "full" means every slot holds different data.
    */
-  function backup(raw: string): boolean {
-    if (storage === undefined) return false;
+  function backup(raw: string): "ok" | "full" | "failed" {
+    if (storage === undefined) return "failed";
     try {
-      for (let n = 1; n <= MAX_BACKUPS; n++) {
-        const slot = n === 1 ? `${key}.corrupt` : `${key}.corrupt-${n}`;
+      for (const slot of backupKeys) {
         const existing = storage.getItem(slot);
-        if (existing === raw) return true;
+        if (existing === raw) return "ok";
         if (existing === null) {
           storage.setItem(slot, raw);
-          return true;
+          return "ok";
         }
       }
+      return "full";
     } catch (error) {
       console.warn("Couldn't back up unreadable saved locations", error);
+      return "failed";
     }
-    return false;
+  }
+
+  function protect(raw: string) {
+    const result = backup(raw);
+    if (result === "full") readOnlyKind = "backups-full";
+    else if (result === "failed") readOnlyKind = "backup";
   }
 
   function load() {
@@ -414,13 +454,13 @@ export function createLocationStore(
     }
     if (!parsed.ok) {
       corrupt = true;
-      if (!backup(raw)) readOnlyKind = "backup";
+      protect(raw);
       return;
     }
     locations = parsed.locations;
     dropped = parsed.dropped;
     // The next write would silently erase the entries we dropped.
-    if (dropped > 0 && !backup(raw)) readOnlyKind = "backup";
+    if (dropped > 0) protect(raw);
   }
 
   const readOnlyReason = (): string | null =>
@@ -428,7 +468,9 @@ export function createLocationStore(
       ? NEWER_VERSION
       : readOnlyKind === "backup"
         ? BACKUP_FAILED
-        : null;
+        : readOnlyKind === "backups-full"
+          ? BACKUPS_FULL
+          : null;
 
   /**
    * Listeners run synchronously in subscription order, each isolated from the
@@ -473,7 +515,11 @@ export function createLocationStore(
     } catch (error) {
       persistent = false;
       warnOnce("writing to storage failed (full or private mode?).", error);
-      return false;
+      if (lastRaw !== null) return false;
+      // Nothing on disk to protect (e.g. Safari private mode): keep going in
+      // memory rather than refusing every change.
+      memoryOnly = true;
+      return true;
     }
   }
 
@@ -483,17 +529,22 @@ export function createLocationStore(
   };
 
   /**
-   * Applies a change to the freshest data and saves it. If saving fails the
-   * previous list is restored so memory never disagrees with storage.
+   * Applies a change to the freshest data and saves it. The callback may
+   * return null for "nothing to do". If saving fails the previous list is
+   * restored so memory never disagrees with storage.
    */
-  function mutate(change: (current: SavedLocation[]) => SavedLocation[]) {
+  function mutate(
+    change: (current: SavedLocation[]) => SavedLocation[] | null,
+  ) {
     assertWritable();
     if (refresh()) {
       notify();
       assertWritable();
     }
     const previous = locations;
-    locations = change(previous);
+    const next = change(previous);
+    if (next === null) return;
+    locations = next;
     if (!persist()) {
       locations = previous;
       throw new Error(SAVE_FAILED);
@@ -556,13 +607,12 @@ export function createLocationStore(
       return copyLocation(added as SavedLocation);
     },
     rename(id, name) {
-      const existing = requireIn(locations, id);
-      const problem = checkLocationInput(name, existing.lat, existing.lon);
+      // Coordinates are irrelevant here; only the name is being checked.
+      const problem = checkLocationInput(name, 0, 0);
       if (problem !== null) throw new RangeError(problem);
       let updated: SavedLocation | undefined;
       mutate((current) => {
-        const target = requireIn(current, id);
-        updated = { ...target, name: name.trim() };
+        updated = { ...requireIn(current, id), name: name.trim() };
         return current.map((l) =>
           l.id === id ? (updated as SavedLocation) : l,
         );
@@ -570,10 +620,10 @@ export function createLocationStore(
       return copyLocation(updated as SavedLocation);
     },
     remove(id) {
-      if (!locations.some((l) => l.id === id)) return false;
       let removed = false;
       mutate((current) => {
-        removed = current.some((l) => l.id === id);
+        if (!current.some((l) => l.id === id)) return null;
+        removed = true;
         return current.filter((l) => l.id !== id);
       });
       return removed;
@@ -582,8 +632,7 @@ export function createLocationStore(
       const meta = cleanMeta(nws);
       let updated: SavedLocation | undefined;
       mutate((current) => {
-        const target = requireIn(current, id);
-        updated = { ...target, nws: meta };
+        updated = { ...requireIn(current, id), nws: meta };
         return current.map((l) =>
           l.id === id ? (updated as SavedLocation) : l,
         );
@@ -598,6 +647,42 @@ export function createLocationStore(
       }
       mutate(() => parsed.locations);
     },
+    merge(incoming) {
+      const parsed = parseLocationsFile({ locations: incoming }, nowIso());
+      if (!parsed.ok) throw new RangeError(parsed.reason);
+      const result: MergeResult = { added: 0, skipped: 0, warnings: [] };
+      mutate((current) => {
+        // Reset so a retry after a refresh doesn't double count.
+        result.added = 0;
+        result.skipped = 0;
+        result.warnings = [];
+        const merged = [...current];
+        const taken = new Set(merged.map((l) => l.id));
+        for (const entry of parsed.locations) {
+          const duplicate = merged.some(
+            (l) =>
+              l.lat === entry.lat &&
+              l.lon === entry.lon &&
+              l.name === entry.name,
+          );
+          if (duplicate) {
+            result.skipped++;
+            continue;
+          }
+          const id = uniqueId(entry.id, taken);
+          if (id !== entry.id) {
+            result.warnings.push(
+              `"${entry.name}" was given the id "${id}" because "${entry.id}" is already in use.`,
+            );
+          }
+          taken.add(id);
+          merged.push({ ...entry, id });
+          result.added++;
+        }
+        return merged;
+      });
+      return result;
+    },
     subscribe(fn) {
       listeners.add(fn);
       return () => {
@@ -605,12 +690,42 @@ export function createLocationStore(
       };
     },
     discardCorrupt() {
-      if (readOnlyKind !== "backup") return;
+      if (readOnlyKind !== "backup" && readOnlyKind !== "backups-full") return;
       readOnlyKind = null;
+      // Unreadable data has nothing to keep; with dropped entries the valid
+      // ones are already in the list and only the dropped ones are given up.
+      if (corrupt) locations = [];
       corrupt = false;
-      dropped = 0;
-      locations = [];
       notify();
+    },
+    listBackups() {
+      if (storage === undefined) return [];
+      const found: { key: string; size: number }[] = [];
+      for (const slot of backupKeys) {
+        try {
+          const value = storage.getItem(slot);
+          if (value !== null) found.push({ key: slot, size: value.length });
+        } catch {
+          // Unreadable slot: leave it out.
+        }
+      }
+      return found;
+    },
+    clearBackups() {
+      if (storage === undefined) return;
+      for (const slot of backupKeys) {
+        try {
+          storage.removeItem(slot);
+        } catch {
+          // Nothing more we can do for this slot.
+        }
+      }
+      // The current data's own backup may just have been removed; redo it, or
+      // pause again, before anything can overwrite the main key.
+      if (corrupt || dropped > 0) {
+        load();
+        notify();
+      }
     },
     get corrupt() {
       return corrupt;
@@ -623,6 +738,9 @@ export function createLocationStore(
     },
     get readOnly() {
       return readOnlyKind !== null;
+    },
+    get readOnlyKind() {
+      return readOnlyKind;
     },
     get readOnlyReason() {
       return readOnlyReason();

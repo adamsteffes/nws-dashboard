@@ -263,12 +263,11 @@ describe("importLocations", () => {
 
   it("replaces invalid createdAt values", () => {
     const result = validateLocationsFile({
-      locations: [{ name: "A", lat: 1, lon: 1, createdAt: "yesterday-ish" }],
+      locations: [{ name: "A", lat: 1, lon: 1, createdAt: "2026" }],
     });
-    expect(
-      result.ok &&
-        Number.isNaN(Date.parse(result.file.locations[0]?.createdAt ?? "")),
-    ).toBe(false);
+    expect(result.ok && result.file.locations[0]?.createdAt).toMatch(
+      /^\d{4}-\d{2}-\d{2}T/,
+    );
   });
 
   it("rejects oversized files", () => {
