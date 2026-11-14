@@ -2,6 +2,7 @@ import { render } from "lit-html";
 import { createAppContext } from "./app/context";
 import { createDashboardController } from "./app/dashboardController";
 import { createDiscussionController } from "./app/discussionController";
+import { createLocationController } from "./app/locationController";
 import { createManageController } from "./app/manageController";
 import "./styles/base.css";
 import {
@@ -41,6 +42,9 @@ const dashboard = createDashboardController(ctx, { onChange: () => update() });
 const discussion = createDiscussionController(ctx, {
   onChange: () => update(),
 });
+const locationPage = createLocationController(ctx, {
+  onChange: () => update(),
+});
 
 // Data older than this is reloaded when the dashboard is opened.
 const DASHBOARD_MAX_AGE_MS = 5 * 60_000;
@@ -65,7 +69,7 @@ function routeContent(route: Route) {
     case "dashboard":
       return dashboardView(dashboard.viewProps());
     case "location":
-      return locationView(ctx.store.get(route.id));
+      return locationView(locationPage.viewProps(route.id));
     case "discussion":
       return discussionView(discussion.viewProps(), {
         onSections: (on) => discussion.setSections(on),
@@ -90,13 +94,17 @@ function update() {
       title,
       online: dashboard.online,
       refreshing:
-        route.name === "discussion"
-          ? discussion.refreshing
-          : dashboard.refreshing,
+        route.name === "location"
+          ? locationPage.refreshing
+          : route.name === "discussion"
+            ? discussion.refreshing
+            : dashboard.refreshing,
       onRefresh: () =>
-        void (route.name === "discussion"
-          ? discussion.refresh()
-          : dashboard.load({ refresh: true })),
+        void (route.name === "location"
+          ? locationPage.refresh()
+          : route.name === "discussion"
+            ? discussion.refresh()
+            : dashboard.load({ refresh: true })),
       content: routeContent(route),
       version: __APP_VERSION__,
       notices: updatePromptView({
@@ -137,6 +145,9 @@ createRouter((next) => {
   ) {
     void dashboard.load();
   }
+  if (next.name !== "location") locationPage.close();
+  if (next.name !== "discussion") discussion.close();
+  if (next.name === "location" && changed) void locationPage.open(next.id);
   if (changed) {
     // Screen readers get no page load, so announce the new page by focusing its heading.
     document.querySelector<HTMLElement>("#page-title")?.focus();
@@ -145,9 +156,11 @@ createRouter((next) => {
 
 window.addEventListener("online", () => {
   dashboard.setOnline(true);
+  locationPage.setOnline(true);
 });
 window.addEventListener("offline", () => {
   dashboard.setOnline(false);
+  locationPage.setOnline(false);
 });
 
 // Also fires for changes made in another tab.
@@ -158,6 +171,7 @@ if (route.name === "dashboard") void dashboard.load();
 if (route.name === "discussion") {
   void discussion.open(route.id, route.productId);
 }
+if (route.name === "location") void locationPage.open(route.id);
 subscribePwa(update);
 
 // Ask the browser not to evict saved locations under storage pressure; the result is advisory.

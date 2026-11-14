@@ -21,6 +21,7 @@ export const STATIONS_URL =
   "https://api.weather.gov/gridpoints/TOP/32,81/stations";
 export const FORECAST_URL =
   "https://api.weather.gov/gridpoints/TOP/32,81/forecast";
+export const HOURLY_URL = `${FORECAST_URL}/hourly`;
 export const ALERTS_URL = alertsUrl(LINN.lat, LINN.lon);
 export const KMYZ_URL = latestObservationUrl("KMYZ");
 export const KCNK_URL = latestObservationUrl("KCNK");
@@ -45,6 +46,7 @@ export const linnRoutes = (): Routes => ({
   [POINT_URL]: "points_linn-ks",
   [STATIONS_URL]: "stations_linn-ks",
   [FORECAST_URL]: "forecast_linn-ks",
+  [HOURLY_URL]: "forecast_hourly_linn-ks",
   [ALERTS_URL]: "alerts_active_linn-ks",
   [KMYZ_URL]: "obs_latest_linn-ks_KMYZ",
   [KCNK_URL]: "obs_latest_linn-ks_KCNK",

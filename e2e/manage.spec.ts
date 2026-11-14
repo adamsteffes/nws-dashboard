@@ -41,7 +41,7 @@ test("adds a location by coordinates and shows it on the dashboard", async ({
   await expect(page).toHaveURL(/#\/l\/linn$/);
   await expect(page).toHaveTitle("Linn — NWS Weather");
   await expect(
-    page.getByRole("heading", { level: 2, name: "Linn" }),
+    page.getByRole("heading", { level: 1, name: "Linn" }),
   ).toBeVisible();
 });
 
