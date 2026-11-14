@@ -104,10 +104,14 @@ function update() {
     }),
     root,
   );
+  // Template swaps (confirm rows, inline forms) drop focus; put it back.
+  if (route.name === "manage") manage.applyFocus();
 }
 
 createRouter((next) => {
   const changed = routeHref(next) !== routeHref(route);
+  // Stale confirms and messages from an earlier visit shouldn't greet the user.
+  if (next.name === "manage" && route.name !== "manage") manage.reset();
   route = next;
   update();
   if (changed) {

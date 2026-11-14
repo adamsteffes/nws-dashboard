@@ -42,10 +42,12 @@ function rowActions(
         <div class="field">
           <label for=${fieldId}>New name for ${location.name}</label>
           <input id=${fieldId} type="text" maxlength="60" autocomplete="off"
+            aria-invalid=${list.renameError ? "true" : nothing}
+            aria-describedby=${list.renameError ? `${fieldId}-error` : nothing}
             .value=${list.renameValue}
             @input=${(e: Event) => actions.setRenameValue(inputValue(e))} />
+          ${list.renameError ? html`<span class="error" id=${`${fieldId}-error`} role="alert">${list.renameError}</span>` : nothing}
         </div>
-        ${list.renameError ? html`<p class="error" role="alert">${list.renameError}</p>` : nothing}
         <div class="button-row">
           <button type="submit" class="btn">Save</button>
           <button type="button" class="btn btn-secondary" @click=${actions.cancelRename}>Cancel</button>
@@ -58,22 +60,26 @@ function rowActions(
       <div class="confirm-row" role="group" aria-label="Confirm delete">
         <span>Delete ${location.name}?</span>
         <button type="button" class="btn" @click=${actions.confirmDelete}>Yes</button>
-        <button type="button" class="btn btn-secondary" @click=${actions.cancelDelete}>Cancel</button>
+        <button type="button" class="btn btn-secondary" data-focus="delete-cancel" @click=${actions.cancelDelete}>Cancel</button>
       </div>
     `;
   }
+  const thisBusy = list.busyId === location.id;
   return html`
     <div class="button-row">
-      <button type="button" class="btn btn-secondary" ?disabled=${locked}
+      <button type="button" class="btn btn-secondary" ?disabled=${locked || thisBusy}
+        data-focus=${`rename-${location.id}`}
         aria-label=${`Rename ${location.name}`}
         @click=${() => actions.startRename(location.id)}>Rename</button>
-      <button type="button" class="btn btn-secondary" ?disabled=${locked}
+      <button type="button" class="btn btn-secondary" ?disabled=${locked || thisBusy}
+        data-focus=${`delete-${location.id}`}
         aria-label=${`Delete ${location.name}`}
         @click=${() => actions.askDelete(location.id)}>Delete</button>
       <button type="button" class="btn btn-secondary" ?disabled=${locked || busy}
-        aria-label=${`Re-resolve ${location.name}`}
+        aria-busy=${thisBusy ? "true" : "false"}
+        aria-label=${`${thisBusy ? "Re-resolving" : "Re-resolve"} ${location.name}`}
         @click=${() => void actions.reresolve(location.id)}>${
-          list.busyId === location.id ? "Re-resolving…" : "Re-resolve"
+          thisBusy ? "Re-resolving…" : "Re-resolve"
         }</button>
     </div>
   `;
@@ -83,7 +89,7 @@ function listSection(props: ManageViewProps, locked: boolean): TemplateResult {
   const { locations, state } = props;
   return html`
     <section class="card stack" aria-labelledby="saved-heading">
-      <h2 id="saved-heading">Saved locations</h2>
+      <h2 id="saved-heading" tabindex="-1">Saved locations</h2>
       ${messageRegion(state.list.message)}
       ${
         locations.length === 0
@@ -109,24 +115,37 @@ function addSection(props: ManageViewProps, locked: boolean): TemplateResult {
   const { state, actions, canGeolocate } = props;
   const add = state.add;
   const disabled = locked || add.busy;
+  const invalid = add.errorField && add.message ? add.message.text : null;
   const field = (
-    id: string,
-    label: string,
     key: "name" | "lat" | "lon",
-    extra: TemplateResult | typeof nothing,
-  ) => html`
-    <div class="field">
-      <label for=${id}>${label}</label>
-      <input id=${id} autocomplete="off" autocapitalize="off" spellcheck="false"
-        ?disabled=${locked}
-        .value=${add[key]}
-        @input=${(e: Event) => actions.setAddField(key, inputValue(e))}
-        inputmode=${key === "name" ? "text" : "decimal"}
-        maxlength=${key === "name" ? "60" : nothing}
-        type="text" />
-      ${extra}
-    </div>
-  `;
+    label: string,
+    hint: string | null,
+  ) => {
+    const id = `add-${key}`;
+    const failing = add.errorField === key && invalid !== null;
+    const describedBy = [
+      hint ? `${id}-hint` : null,
+      failing ? `${id}-error` : null,
+    ]
+      .filter(Boolean)
+      .join(" ");
+    return html`
+      <div class="field">
+        <label for=${id}>${label}</label>
+        <input id=${id} type="text" autocomplete="off" autocapitalize="off"
+          autocorrect="off" spellcheck="false"
+          ?disabled=${disabled}
+          aria-invalid=${failing ? "true" : nothing}
+          aria-describedby=${describedBy || nothing}
+          .value=${add[key]}
+          @input=${(e: Event) => actions.setAddField(key, inputValue(e))}
+          inputmode="text"
+          maxlength=${key === "name" ? "60" : nothing} />
+        ${hint ? html`<span class="hint" id=${`${id}-hint`}>${hint}</span>` : nothing}
+        ${failing ? html`<span class="error" id=${`${id}-error`}>${invalid}</span>` : nothing}
+      </div>
+    `;
+  };
   return html`
     <section class="card stack" aria-labelledby="add-heading">
       <h2 id="add-heading">Add a location</h2>
@@ -134,9 +153,9 @@ function addSection(props: ManageViewProps, locked: boolean): TemplateResult {
         e.preventDefault();
         void actions.submitAdd();
       }}>
-        ${field("add-name", "Name", "name", nothing)}
-        ${field("add-lat", "Latitude", "lat", html`<span class="hint">For example 39.7456</span>`)}
-        ${field("add-lon", "Longitude", "lon", html`<span class="hint">For example -97.0892 (west is negative)</span>`)}
+        ${field("name", "Name", null)}
+        ${field("lat", "Latitude", "Latitude is positive north of the equator (e.g. 39.75 or 39.75 N).")}
+        ${field("lon", "Longitude", "Longitude is negative west of Greenwich (e.g. -97.08 or 97.08 W).")}
         <div class="button-row">
           <button type="submit" class="btn" ?disabled=${disabled}>${
             add.busy ? "Adding…" : "Add location"
@@ -144,7 +163,7 @@ function addSection(props: ManageViewProps, locked: boolean): TemplateResult {
           ${
             canGeolocate
               ? html`<button type="button" class="btn btn-secondary"
-                  ?disabled=${locked || add.locating}
+                  ?disabled=${locked || add.locating || add.busy}
                   @click=${() => void actions.useMyLocation()}>${
                     add.locating ? "Locating…" : "Use my location"
                   }</button>`
@@ -152,7 +171,11 @@ function addSection(props: ManageViewProps, locked: boolean): TemplateResult {
           }
         </div>
       </form>
-      ${messageRegion(add.message)}
+      ${messageRegion(
+        invalid !== null
+          ? { kind: "error", text: "Check the highlighted field." }
+          : add.message,
+      )}
       ${
         add.offerSaveWithout
           ? html`<div class="button-row">
@@ -176,7 +199,7 @@ function confirmReplaceRow(
       } with this backup?</span>
       <button type="button" class="btn btn-secondary" @click=${() => void actions.exportData()}>Export first</button>
       <button type="button" class="btn" @click=${actions.confirmReplace}>Yes, replace</button>
-      <button type="button" class="btn btn-secondary" @click=${actions.cancelReplace}>Cancel</button>
+      <button type="button" class="btn btn-secondary" data-focus="confirm-cancel" @click=${actions.cancelReplace}>Cancel</button>
     </div>
   `;
 }
@@ -185,7 +208,7 @@ function importResultView(
   props: ManageViewProps,
 ): TemplateResult | typeof nothing {
   const { result, error } = props.state.import;
-  if (error) return html`<p class="error">${error}</p>`;
+  if (error) return html`<p class="error" id="import-error">${error}</p>`;
   if (!result) return nothing;
   const parts = [`${result.added} added`];
   if (result.skipped > 0) parts.push(`${result.skipped} already saved`);
@@ -249,6 +272,8 @@ function backupSection(
       <div class="field">
         <label for="import-text">Or paste JSON</label>
         <textarea id="import-text" rows="6" spellcheck="false" ?disabled=${locked}
+          aria-invalid=${imp.error ? "true" : nothing}
+          aria-describedby=${imp.error ? "import-error" : nothing}
           .value=${imp.text}
           @input=${(e: Event) => actions.setImportText(inputValue(e))}></textarea>
       </div>
@@ -264,7 +289,7 @@ function backupSection(
         imp.confirmReplace
           ? confirmReplaceRow(props, actions)
           : html`<div class="button-row">
-              <button type="button" class="btn" ?disabled=${locked}
+              <button type="button" class="btn" ?disabled=${locked} data-focus="import"
                 @click=${actions.requestImport}>Import</button>
             </div>`
       }
@@ -290,7 +315,7 @@ function storageSection(
   const canDiscard = kind === "backup" || kind === "backups-full";
   return html`
     <section class="card stack" aria-labelledby="storage-heading">
-      <h2 id="storage-heading">Storage</h2>
+      <h2 id="storage-heading" tabindex="-1">Storage</h2>
       ${
         storage.persistent
           ? nothing
@@ -321,8 +346,16 @@ function storageSection(
       }
       ${
         kind === "backups-full"
-          ? html`<div class="button-row"><button type="button" class="btn btn-secondary"
-              @click=${actions.clearBackups}>Clear old backups</button></div>`
+          ? state.confirmClear
+            ? html`<div class="confirm-row" role="group" aria-label="Confirm clear backups">
+                <span>Delete ${storage.backups.length} old ${
+                  storage.backups.length === 1 ? "backup" : "backups"
+                }? Download them first if you might need them.</span>
+                <button type="button" class="btn" @click=${actions.clearBackups}>Yes</button>
+                <button type="button" class="btn btn-secondary" data-focus="confirm-cancel" @click=${actions.cancelClearBackups}>Cancel</button>
+              </div>`
+            : html`<div class="button-row"><button type="button" class="btn btn-secondary"
+                data-focus="ask-clear" @click=${actions.askClearBackups}>Clear old backups</button></div>`
           : nothing
       }
       ${
@@ -337,10 +370,10 @@ function storageSection(
             ? html`<div class="confirm-row" role="group" aria-label="Confirm discard">
                 <span>Discard the unreadable data? It can't be recovered afterwards.</span>
                 <button type="button" class="btn" @click=${actions.confirmDiscard}>Yes, discard</button>
-                <button type="button" class="btn btn-secondary" @click=${actions.cancelDiscard}>Cancel</button>
+                <button type="button" class="btn btn-secondary" data-focus="confirm-cancel" @click=${actions.cancelDiscard}>Cancel</button>
               </div>`
             : html`<div class="button-row"><button type="button" class="btn btn-secondary"
-                @click=${actions.askDiscard}>Discard unreadable data and continue</button></div>`
+                data-focus="ask-discard" @click=${actions.askDiscard}>Discard unreadable data and continue</button></div>`
           : nothing
       }
       <div role="status" aria-live="polite">${
