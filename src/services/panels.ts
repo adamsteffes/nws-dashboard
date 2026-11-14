@@ -6,12 +6,8 @@ import {
   fetchLatestObservation,
   type LatestObservation,
 } from "../nws/observations";
-import { fetchStations, resolvePoint } from "../nws/points";
-import {
-  metaFromPoint,
-  type NwsMeta,
-  type SavedLocation,
-} from "../store/locations";
+import type { NwsMeta, SavedLocation } from "../store/locations";
+import { resolveLocation } from "./resolveLocation";
 
 /** One independently loading part of a dashboard card. */
 export type Panel<T> = {
@@ -71,14 +67,13 @@ async function lookUpMeta(
   location: SavedLocation,
   refresh: boolean,
 ): Promise<NwsMeta> {
-  const point = await resolvePoint(ctx.client, location.lat, location.lon, {
-    refresh,
-  });
-  const stations = await fetchStations(
+  const meta = await resolveLocation(
     ctx.client,
-    point.data.observationStationsUrl,
+    location.lat,
+    location.lon,
+    ctx.now(),
+    { refresh },
   );
-  const meta = metaFromPoint(point.data, stations.data, ctx.now());
   try {
     ctx.store.updateMeta(location.id, meta);
   } catch {

@@ -1,8 +1,8 @@
 import { NwsError, NwsNotFound, NwsOfflineError } from "../nws/errors";
-import { fetchStations, resolvePoint, roundCoord } from "../nws/points";
+import { roundCoord } from "../nws/points";
+import { resolveLocation } from "../services/resolveLocation";
 import {
   checkLocationInput,
-  metaFromPoint,
   type NwsMeta,
   type ReadOnlyKind,
   type SavedLocation,
@@ -303,14 +303,8 @@ export function createManageController(
     }
   }
 
-  async function lookUp(lat: number, lon: number, refresh: boolean) {
-    const point = await resolvePoint(client, lat, lon, { refresh });
-    const stations = await fetchStations(
-      client,
-      point.data.observationStationsUrl,
-    );
-    return metaFromPoint(point.data, stations.data, ctx.now());
-  }
+  const lookUp = (lat: number, lon: number, refresh: boolean) =>
+    resolveLocation(client, lat, lon, ctx.now(), { refresh });
 
   function runImport() {
     const i = state.import;
