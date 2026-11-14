@@ -1,7 +1,25 @@
 :root {
-  --bg: #ffffff;
+  --bg: #f4f6f9;
   --fg: #111418;
-  --muted: #5b6470;
+  --muted: #566070;
+  --surface: #ffffff;
+  --border: #d3d9e2;
+  --link: #0b5cc2;
+  --focus: #0b5cc2;
+  --btn-bg: #0b5cc2;
+  --btn-fg: #ffffff;
+  --banner-bg: #fff1c2;
+  --banner-fg: #3d2c00;
+  --sev-extreme-bg: #b42318;
+  --sev-extreme-fg: #ffffff;
+  --sev-severe-bg: #b42318;
+  --sev-severe-fg: #ffffff;
+  --sev-moderate-bg: #c2410c;
+  --sev-moderate-fg: #ffffff;
+  --sev-minor-bg: #facc15;
+  --sev-minor-fg: #1c1500;
+  --sev-unknown-bg: #4b5563;
+  --sev-unknown-fg: #ffffff;
   color-scheme: light dark;
 }
 
@@ -9,22 +27,268 @@
   :root {
     --bg: #111418;
     --fg: #f2f4f7;
-    --muted: #9aa4b2;
+    --muted: #a3adbb;
+    --surface: #1b2027;
+    --border: #343c48;
+    --link: #7db4ff;
+    --focus: #7db4ff;
+    --btn-bg: #7db4ff;
+    --btn-fg: #0a1220;
+    --banner-bg: #4a3a05;
+    --banner-fg: #ffeaa6;
+    --sev-extreme-bg: #f97066;
+    --sev-extreme-fg: #2a0602;
+    --sev-severe-bg: #f97066;
+    --sev-severe-fg: #2a0602;
+    --sev-moderate-bg: #fb923c;
+    --sev-moderate-fg: #230e00;
+    --sev-minor-bg: #facc15;
+    --sev-minor-fg: #1c1500;
+    --sev-unknown-bg: #9ca3af;
+    --sev-unknown-fg: #111418;
   }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    -apple-system, system-ui, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  line-height: 1.5;
   background: var(--bg);
   color: var(--fg);
-  padding-top: max(16px, env(safe-area-inset-top));
-  padding-right: max(16px, env(safe-area-inset-right));
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
-  padding-left: max(16px, env(safe-area-inset-left));
+  overflow-wrap: anywhere;
 }
 
-.version {
+a {
+  color: var(--link);
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The heading is focused programmatically after navigation; it is not interactive. */
+h1:focus,
+main:focus {
+  outline: none;
+}
+
+h1,
+h2 {
+  line-height: 1.25;
+  margin: 0 0 0.5rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+}
+
+h2 {
+  font-size: 1.25rem;
+}
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -100px;
+  z-index: 10;
+  padding: 12px 16px;
+  background: var(--surface);
+  color: var(--fg);
+  border-radius: 8px;
+}
+
+.skip-link:focus {
+  top: max(8px, env(safe-area-inset-top));
+}
+
+/* Header, main and footer share the same safe-area-aware gutters. */
+.app-header,
+.app-main,
+.app-footer {
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+}
+
+.app-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header h1 {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-header nav {
+  display: flex;
+  gap: 4px;
+}
+
+.app-header nav a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 8px;
+  color: var(--fg);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.app-header nav a[aria-current="page"] {
+  background: var(--bg);
+  box-shadow: inset 0 -3px 0 var(--link);
+  font-weight: 700;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.banner {
+  padding: 12px max(16px, env(safe-area-inset-right)) 12px
+    max(16px, env(safe-area-inset-left));
+  background: var(--banner-bg);
+  color: var(--banner-fg);
+  font-weight: 600;
+}
+
+.app-main {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.app-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding-top: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
   color: var(--muted);
   font-size: 0.875rem;
+}
+
+.card {
+  min-width: 0;
+  padding: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.card > :last-child {
+  margin-bottom: 0;
+}
+
+.grid,
+.two-col {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .two-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.severity {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.severity-extreme {
+  background: var(--sev-extreme-bg);
+  color: var(--sev-extreme-fg);
+}
+
+.severity-severe {
+  background: var(--sev-severe-bg);
+  color: var(--sev-severe-fg);
+}
+
+.severity-moderate {
+  background: var(--sev-moderate-bg);
+  color: var(--sev-moderate-fg);
+}
+
+.severity-minor {
+  background: var(--sev-minor-bg);
+  color: var(--sev-minor-fg);
+}
+
+.severity-unknown {
+  background: var(--sev-unknown-bg);
+  color: var(--sev-unknown-fg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation: none;
+    transition: none;
+  }
 }

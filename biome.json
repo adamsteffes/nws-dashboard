@@ -6,7 +6,9 @@
       "!**/dist",
       "!**/node_modules",
       "!**/coverage",
-      "!tests/fixtures"
+      "!tests/fixtures",
+      "!playwright-report",
+      "!test-results"
     ]
   },
   "formatter": { "enabled": true, "indentStyle": "space", "indentWidth": 2 },
