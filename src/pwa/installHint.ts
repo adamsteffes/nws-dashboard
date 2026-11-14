@@ -47,6 +47,13 @@ export function dismissInstallHint(): void {
   }
 }
 
+export function isStandalone(): boolean {
+  return (
+    (navigator as Navigator & { standalone?: boolean }).standalone === true ||
+    window.matchMedia("(display-mode: standalone)").matches
+  );
+}
+
 export function currentInstallHintEnv(): InstallHintEnv {
   return {
     userAgent: navigator.userAgent,
@@ -68,7 +75,7 @@ export function installHintView(props: {
     <div class="banner banner-action banner-install" role="note">
       <p>Install: tap Share, then Add to Home Screen. Saved locations don't carry over from Safari to the Home Screen app — use Export/Import on the Locations page.</p>
       <div class="banner-buttons">
-        <button type="button" class="btn btn-secondary" @click=${props.onDismiss}>Dismiss</button>
+        <button type="button" class="btn btn-secondary" aria-label="Dismiss install tip" @click=${props.onDismiss}>Dismiss</button>
       </div>
     </div>
   `;

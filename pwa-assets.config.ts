@@ -10,6 +10,8 @@ const BACKGROUND = "#0b5cc2";
 export default defineConfig({
   preset: {
     ...minimal2023Preset,
+    // The 64px icon is unused by the manifest; favicon.ico is still generated.
+    transparent: { ...minimal2023Preset.transparent, sizes: [192, 512] },
     maskable: {
       ...minimal2023Preset.maskable,
       resizeOptions: { background: BACKGROUND, fit: "contain" },

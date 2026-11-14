@@ -18,6 +18,8 @@ export default defineConfig({
     VitePWA({
       strategies: "generateSW",
       registerType: "prompt",
+      // The manifest icons are already matched by globPatterns; skip the duplicate precache entries.
+      includeManifestIcons: false,
       // Registered manually in src/pwa/register.ts so the update UI can hook in.
       injectRegister: false,
       manifest: {
@@ -44,7 +46,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,webmanifest}"],
+        // manifest.webmanifest is precached by the plugin itself, so it is not globbed here.
+        globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
         navigateFallback: `${BASE}index.html`,
         cleanupOutdatedCaches: true,
         clientsClaim: true,

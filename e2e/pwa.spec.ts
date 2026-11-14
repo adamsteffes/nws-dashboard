@@ -112,7 +112,10 @@ test.describe("install hint", () => {
     const hint = page.getByText("tap Share, then Add to Home Screen");
     await expect(hint).toBeVisible();
 
-    await page.getByRole("button", { name: "Dismiss" }).click();
+    await page
+      .locator(".banner-install")
+      .getByRole("button", { name: "Dismiss install tip" })
+      .click();
     await expect(hint).toHaveCount(0);
 
     await page.reload();

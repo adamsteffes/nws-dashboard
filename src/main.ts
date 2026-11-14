@@ -4,6 +4,7 @@ import {
   currentInstallHintEnv,
   dismissInstallHint,
   installHintView,
+  isStandalone,
   shouldShowInstallHint,
 } from "./pwa/installHint";
 import {
@@ -81,6 +82,8 @@ function update() {
       version: __APP_VERSION__,
       notices: updatePromptView({
         ...getPwaState(),
+        // Avoid stacking two notices; the install hint takes priority.
+        offlineReady: getPwaState().offlineReady && !installHintVisible,
         onReload: () => void getPwaState().update(),
         onLater: dismissNeedRefresh,
         onDismissOfflineReady: dismissOfflineReady,
@@ -121,5 +124,8 @@ update();
 subscribePwa(update);
 
 // Ask the browser not to evict saved locations under storage pressure; the result is advisory.
-void Promise.resolve(navigator.storage?.persist?.()).catch(() => {});
+// Only for the installed app: Firefox desktop shows a permission prompt for this call.
+if (isStandalone()) {
+  void Promise.resolve(navigator.storage?.persist?.()).catch(() => {});
+}
 void registerPwa();

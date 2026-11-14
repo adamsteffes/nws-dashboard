@@ -35,7 +35,7 @@ export function updatePromptView(
       <div class="banner banner-action banner-offline-ready">
         <p>Ready to work offline.</p>
         <div class="banner-buttons">
-          <button type="button" class="btn btn-secondary" @click=${onDismissOfflineReady}>Dismiss</button>
+          <button type="button" class="btn btn-secondary" aria-label="Dismiss offline notice" @click=${onDismissOfflineReady}>Dismiss</button>
         </div>
       </div>
     `;

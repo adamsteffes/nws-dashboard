@@ -1,9 +1,10 @@
 import { render } from "lit-html";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   dismissNeedRefresh,
   getPwaState,
   registerPwa,
+  schedulePeriodicUpdateChecks,
   subscribePwa,
 } from "../../src/pwa/register";
 import {
@@ -50,6 +51,9 @@ describe("updatePromptView", () => {
   it("shows a dismissible offline-ready note", () => {
     const { el, props } = mount({ offlineReady: true });
     expect(el.textContent).toContain("Ready to work offline.");
+    expect(button(el, "Dismiss").getAttribute("aria-label")).toBe(
+      "Dismiss offline notice",
+    );
     button(el, "Dismiss").click();
     expect(props.onDismissOfflineReady).toHaveBeenCalledOnce();
   });
@@ -75,5 +79,80 @@ describe("pwa state", () => {
     dismissNeedRefresh();
     expect(listener).toHaveBeenCalledOnce();
     await expect(getPwaState().update()).resolves.toBeUndefined();
+  });
+});
+
+describe("schedulePeriodicUpdateChecks", () => {
+  const HOUR = 60 * 60 * 1000;
+  let visibility: DocumentVisibilityState = "visible";
+
+  function setup() {
+    vi.useFakeTimers();
+    visibility = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => visibility,
+    );
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("checks hourly while visible and not while hidden", async () => {
+    setup();
+    const registration = { update: vi.fn(() => Promise.resolve()) };
+    const stop = schedulePeriodicUpdateChecks(registration);
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(registration.update).toHaveBeenCalledTimes(1);
+    visibility = "hidden";
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(registration.update).toHaveBeenCalledTimes(1);
+    stop();
+    visibility = "visible";
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(registration.update).toHaveBeenCalledTimes(1);
+  });
+
+  it("checks when the page becomes visible", async () => {
+    setup();
+    const registration = { update: vi.fn(() => Promise.resolve()) };
+    const stop = schedulePeriodicUpdateChecks(registration);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(registration.update).toHaveBeenCalledTimes(1);
+    visibility = "hidden";
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(registration.update).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it("does not overlap checks and survives failures", async () => {
+    setup();
+    let finish: () => void = () => {};
+    const registration = {
+      update: vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      ),
+    };
+    const stop = schedulePeriodicUpdateChecks(registration);
+    document.dispatchEvent(new Event("visibilitychange"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(registration.update).toHaveBeenCalledTimes(1);
+    finish();
+    await vi.advanceTimersByTimeAsync(0);
+
+    registration.update.mockRejectedValueOnce(new Error("offline"));
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(0);
+    document.dispatchEvent(new Event("visibilitychange"));
+    expect(registration.update).toHaveBeenCalledTimes(3);
+    stop();
+  });
+
+  it("is a no-op without a registration", () => {
+    expect(() => schedulePeriodicUpdateChecks(undefined)()).not.toThrow();
   });
 });

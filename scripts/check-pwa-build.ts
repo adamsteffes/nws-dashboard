@@ -1,5 +1,6 @@
 // Verifies the PWA output of `npm run build`. Run with `npm run check:pwa`.
 import { existsSync, readFileSync } from "node:fs";
+import { distPathForIcon, serviceWorkerProblems } from "./pwa-checks.ts";
 
 const BASE = "/nws-dashboard/";
 const dist = new URL("../dist/", import.meta.url);
@@ -49,19 +50,16 @@ if (manifestText) {
     );
   }
   for (const icon of icons) {
-    check(existsSync(new URL(icon.src, dist)), `icon ${icon.src} not in dist`);
+    check(
+      existsSync(new URL(distPathForIcon(icon.src, BASE), dist)),
+      `icon ${icon.src} not in dist`,
+    );
   }
 }
 
 const sw = read("sw.js");
 if (sw) {
-  check(
-    sw.includes("index.html"),
-    "sw.js does not precache or fall back to index.html",
-  );
-  for (const host of ["api.weather.gov", "radar.weather.gov", "nominatim"]) {
-    check(!sw.includes(host), `sw.js must not reference ${host}`);
-  }
+  errors.push(...serviceWorkerProblems(sw, BASE));
 }
 
 const indexHtml = read("index.html");
