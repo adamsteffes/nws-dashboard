@@ -65,11 +65,47 @@ describe("layoutView", () => {
   });
 
   it("shows the offline banner only when offline", () => {
-    expect(mount().querySelector(".banner")).toBeNull();
+    const onlineEl = mount();
+    expect(onlineEl.querySelector(".banner")).toBeNull();
+    expect(onlineEl.querySelector('[role="status"]')?.textContent?.trim()).toBe(
+      "",
+    );
     const el = mount({ online: false });
-    expect(el.querySelector(".banner")?.textContent).toBe(
+    expect(el.querySelector('[role="status"] .banner')?.textContent).toBe(
       "You're offline — showing saved data",
     );
+  });
+
+  it("keeps the status live region mounted across online changes", () => {
+    const el = document.createElement("div");
+    const props: LayoutProps = {
+      route: { name: "dashboard" },
+      title: "NWS Weather",
+      online: true,
+      refreshing: false,
+      onRefresh: () => {},
+      content: html``,
+      version: "1",
+    };
+    render(layoutView(props), el);
+    const region = el.querySelector('[role="status"]');
+    render(layoutView({ ...props, online: false }), el);
+    expect(el.querySelector('[role="status"]')).toBe(region);
+    expect(region?.textContent).toContain("offline");
+  });
+
+  it("skip link focuses main without changing the hash", () => {
+    const el = mount();
+    document.body.append(el);
+    const before = window.location.hash;
+    const link = el.querySelector(".skip-link") as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("#main");
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+    link.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(window.location.hash).toBe(before);
+    expect(document.activeElement).toBe(el.querySelector("main"));
+    el.remove();
   });
 
   it("shows the version and NWS attribution in the footer", () => {

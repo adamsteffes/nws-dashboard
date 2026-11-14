@@ -80,7 +80,8 @@ a {
 }
 
 /* The heading is focused programmatically after navigation; it is not interactive. */
-h1:focus {
+h1:focus,
+main:focus {
   outline: none;
 }
 

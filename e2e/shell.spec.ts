@@ -13,6 +13,12 @@ const fitsViewport = (page: Page) =>
     () => document.documentElement.scrollWidth <= window.innerWidth,
   );
 
+const ROUTE_TITLES = [
+  ["#/", "NWS Weather"],
+  ["#/manage", "Locations — NWS Weather"],
+  ["#/nope", "Page not found — NWS Weather"],
+] as const;
+
 test("navigates between Dashboard and Locations", async ({ page }) => {
   await page.goto("./");
   const nav = page.getByRole("navigation", { name: "Primary" });
@@ -54,11 +60,29 @@ test("unknown hash shows not-found with a link back", async ({ page }) => {
   await expect(page.getByText("No locations yet")).toBeVisible();
 });
 
+test("skip link focuses main without changing the route", async ({ page }) => {
+  await page.goto("./#/manage");
+  await expect(page).toHaveTitle("Locations — NWS Weather");
+  // Focus the link directly: Tab order into links varies between engines.
+  const skip = page.getByRole("link", { name: "Skip to content" });
+  await skip.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(/#\/manage$/);
+  await expect(page).toHaveTitle("Locations — NWS Weather");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Locations" }),
+  ).toBeVisible();
+  await expect(page.locator("main")).toBeFocused();
+});
+
 test("offline banner follows connectivity", async ({ page, context }) => {
   await page.goto("./");
   const banner = page.getByText("You're offline — showing saved data");
   await expect(banner).toHaveCount(0);
 
+  // The manual dispatch is intentional: engines differ in whether setOffline
+  // fires the window offline/online events, so we trigger them explicitly.
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   await expect(banner).toBeVisible();
@@ -69,18 +93,20 @@ test("offline banner follows connectivity", async ({ page, context }) => {
 });
 
 test("has no horizontal overflow at the project viewport", async ({ page }) => {
-  for (const hash of ["#/", "#/manage", "#/nope"]) {
+  for (const [hash, title] of ROUTE_TITLES) {
     await page.goto(`./${hash}`);
-    await expect(page.locator("h1")).toBeVisible();
+    // Hash-only navigations do not reload, so wait for the route to render.
+    await expect(page).toHaveTitle(title);
     expect(await fitsViewport(page), hash).toBe(true);
   }
 });
 
 test("has no horizontal overflow at 320px wide", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 700 });
-  for (const hash of ["#/", "#/manage", "#/nope"]) {
+  for (const [hash, title] of ROUTE_TITLES) {
     await page.goto(`./${hash}`);
-    await expect(page.locator("h1")).toBeVisible();
+    // Hash-only navigations do not reload, so wait for the route to render.
+    await expect(page).toHaveTitle(title);
     expect(await fitsViewport(page), hash).toBe(true);
   }
 });

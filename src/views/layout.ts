@@ -15,6 +15,12 @@ function current(active: boolean) {
   return active ? "page" : nothing;
 }
 
+// Keep the hash untouched: it is the router's state, and "#main" is not a route.
+function skipToMain(event: Event) {
+  event.preventDefault();
+  document.getElementById("main")?.focus();
+}
+
 export function layoutView(props: LayoutProps): TemplateResult {
   const { route, title, online, refreshing, onRefresh, content, version } =
     props;
@@ -23,7 +29,7 @@ export function layoutView(props: LayoutProps): TemplateResult {
     route.name === "location" ||
     route.name === "discussion";
   return html`
-    <a class="skip-link" href="#main">Skip to content</a>
+    <a class="skip-link" href="#main" @click=${skipToMain}>Skip to content</a>
     <header class="app-header">
       <h1 id="page-title" tabindex="-1">${title}</h1>
       <nav aria-label="Primary">
@@ -34,12 +40,8 @@ export function layoutView(props: LayoutProps): TemplateResult {
         ${refreshing ? "Refreshing…" : "Refresh"}
       </button>
     </header>
-    ${
-      online
-        ? nothing
-        : html`<div class="banner banner-offline" role="status">You're offline — showing saved data</div>`
-    }
-    <main id="main" class="app-main">${content}</main>
+    <div class="banner-region" role="status" aria-live="polite">${online ? nothing : html`<div class="banner banner-offline">You're offline — showing saved data</div>`}</div>
+    <main id="main" class="app-main" tabindex="-1">${content}</main>
     <footer class="app-footer">
       <span class="version">Version ${version}</span>
       <span>Data: <a href="https://www.weather.gov/" target="_blank" rel="noopener noreferrer">National Weather Service</a></span>
