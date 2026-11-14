@@ -1,4 +1,6 @@
 import { render } from "lit-html";
+import { createAppContext } from "./app/context";
+import { createManageController } from "./app/manageController";
 import "./styles/base.css";
 import {
   currentInstallHintEnv,
@@ -31,14 +33,17 @@ if (!app) {
 }
 const root: HTMLElement = app;
 
+const ctx = createAppContext();
+const manage = createManageController(ctx, { onChange: () => update() });
+
 function pageTitle(route: Route): string {
   switch (route.name) {
     case "dashboard":
       return APP_NAME;
     case "location":
-      return `Location ${route.id}`;
+      return ctx.store.get(route.id)?.name ?? "Location not found";
     case "discussion":
-      return `Forecast discussion ${route.id}`;
+      return `Forecast discussion — ${ctx.store.get(route.id)?.name ?? route.id}`;
     case "manage":
       return "Locations";
     case "notFound":
@@ -49,13 +54,13 @@ function pageTitle(route: Route): string {
 function routeContent(route: Route) {
   switch (route.name) {
     case "dashboard":
-      return dashboardView();
+      return dashboardView(ctx.store.list());
     case "location":
-      return locationView(route.id);
+      return locationView(ctx.store.get(route.id));
     case "discussion":
       return discussionView(route.id, route.productId);
     case "manage":
-      return manageView();
+      return manageView(manage.viewProps());
     case "notFound":
       return notFoundView();
   }
@@ -119,6 +124,9 @@ window.addEventListener("offline", () => {
   online = false;
   update();
 });
+
+// Also fires for changes made in another tab.
+ctx.store.subscribe(update);
 
 update();
 subscribePwa(update);

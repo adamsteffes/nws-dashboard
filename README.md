@@ -6,7 +6,7 @@ Live: https://adamsteffes.github.io/nws-dashboard/
 
 ## Use it on your iPad
 
-Open the live URL in Safari, tap **Share**, then **Add to Home Screen**. The Home Screen app keeps its own saved locations, separate from Safari — Export/Import on the Locations page (coming in step 14) will move them between the two.
+Open the live URL in Safari, tap **Share**, then **Add to Home Screen**. The Home Screen app keeps its own saved locations, separate from Safari — Export and Import on the Locations page move them between the two.
 
 ## Development
 
@@ -40,6 +40,7 @@ In the repository, go to Settings → Pages → Build and deployment → Source 
 - [x] Step 11: saved-location store with export/import
 - [x] Step 12: app shell — hash router, layout, base styles
 - [x] Step 13: installable PWA — manifest, icons, service worker, update prompt, install hint
+- [x] Step 14: Locations screen — add, rename, delete, re-resolve, export/import
 
 ## Test data
 

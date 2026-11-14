@@ -8,6 +8,9 @@
   --focus: #0b5cc2;
   --btn-bg: #0b5cc2;
   --btn-fg: #ffffff;
+  --error: #b42318;
+  --ok: #1a6b36;
+  --input-bg: #ffffff;
   --banner-bg: #fff1c2;
   --banner-fg: #3d2c00;
   --sev-extreme-bg: #b42318;
@@ -34,6 +37,9 @@
     --focus: #7db4ff;
     --btn-bg: #7db4ff;
     --btn-fg: #0a1220;
+    --error: #ff9a92;
+    --ok: #7ddc9c;
+    --input-bg: #11151a;
     --banner-bg: #4a3a05;
     --banner-fg: #ffeaa6;
     --sev-extreme-bg: #f97066;
@@ -301,6 +307,143 @@ h2 {
 .severity-unknown {
   background: var(--sev-unknown-bg);
   color: var(--sev-unknown-fg);
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stack > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.muted-ok {
+  color: var(--ok);
+  margin: 0;
+}
+
+.error {
+  color: var(--error);
+  font-weight: 600;
+  margin: 0;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field label {
+  font-weight: 600;
+}
+
+input[type="text"],
+input[type="file"],
+select,
+textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--muted);
+  border-radius: 8px;
+  background: var(--input-bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+textarea {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 0.875rem;
+}
+
+.form-message:empty {
+  display: none;
+}
+
+.button-row,
+.confirm-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.confirm-row {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.confirm-row > span {
+  flex: 1 1 12rem;
+  font-weight: 600;
+}
+
+.loc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loc-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.loc-row:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.loc-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 16px;
+}
+
+.loc-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-weight: 700;
+}
+
+.inline-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.warnings {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 @media (prefers-reduced-motion: reduce) {
