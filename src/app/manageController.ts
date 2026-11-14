@@ -1,6 +1,9 @@
 import { NwsError, NwsNotFound, NwsOfflineError } from "../nws/errors";
 import { roundCoord } from "../nws/points";
-import { resolveLocation } from "../services/resolveLocation";
+import {
+  resolveLocation,
+  saveMetaIfUnchanged,
+} from "../services/resolveLocation";
 import {
   checkLocationInput,
   type NwsMeta,
@@ -474,20 +477,16 @@ export function createManageController(
         const nws = await lookUp(found.lat, found.lon, true);
         // The list can change during the lookup (another tab, delete and
         // re-add under the same id); never attach this result to a different place.
-        const current = store.get(id);
-        if (!current) {
-          l.message = error(REMOVED);
-        } else if (
-          current.lat !== found.lat ||
-          current.lon !== found.lon ||
-          current.createdAt !== found.createdAt
-        ) {
-          l.message = error(
-            `${current.name} changed while updating — try again.`,
+        if (saveMetaIfUnchanged(store, found, nws)) {
+          l.message = info(
+            `Updated weather data for ${store.get(id)?.name ?? found.name}.`,
           );
+        } else if (!store.get(id)) {
+          l.message = error(REMOVED);
         } else {
-          store.updateMeta(id, nws);
-          l.message = info(`Updated weather data for ${current.name}.`);
+          l.message = error(
+            `${store.get(id)?.name ?? found.name} changed while updating — try again.`,
+          );
         }
       } catch (e) {
         l.message = error(

@@ -47,8 +47,14 @@ function dataKey(location: SavedLocation): string {
   ]);
 }
 
-const isUnhealthy = (s: LocationSummary): boolean =>
-  [s.alerts, s.current, s.forecast].some((p) => p.status !== "ok");
+const panelsOf = (s: LocationSummary) => [s.alerts, s.current, s.forecast];
+
+// A panel that is still loading is already being fetched.
+const needsRetry = (s: LocationSummary): boolean =>
+  panelsOf(s).some((p) => p.status === "error" || p.status === "stale");
+
+const hasData = (s: LocationSummary): boolean =>
+  panelsOf(s).some((p) => p.status === "ok" || p.status === "stale");
 
 export function createDashboardController(
   ctx: AppContext,
@@ -60,43 +66,61 @@ export function createDashboardController(
   const loadedKeys = new Map<string, string>();
   /** Latest load per location; an older load's result is dropped. */
   const tokens = new Map<string, number>();
-  const inFlight = new Set<string>();
+  /** What each running load is loading; a store change to anything else needs a new load. */
+  const inFlight = new Map<string, string>();
   let running = 0;
   let nextToken = 0;
   let lastUpdated: Date | null = null;
   let online = (options.isOnline ?? (() => navigator.onLine !== false))();
 
-  async function loadOne(location: SavedLocation, refresh: boolean) {
+  async function loadOne(
+    location: SavedLocation,
+    refresh: boolean,
+  ): Promise<LocationSummary | null> {
     const id = location.id;
     const token = ++nextToken;
     tokens.set(id, token);
-    inFlight.add(id);
+    inFlight.set(id, dataKey(location));
     // Keep showing old data during a refresh; only a first load shows skeletons.
     if (!summaries.has(id)) summaries.set(id, loadingSummary());
     let summary: LocationSummary;
     try {
-      summary = await loadLocationSummary(ctx, location, { refresh });
+      summary = await loadLocationSummary(ctx, location, {
+        refresh,
+        // Metadata this load resolves and saves is not a reason to start over.
+        onMeta: (nws) => {
+          if (tokens.get(id) === token) {
+            inFlight.set(id, dataKey({ ...location, nws }));
+          }
+        },
+      });
     } finally {
       if (tokens.get(id) === token) inFlight.delete(id);
     }
-    if (tokens.get(id) !== token) return;
+    if (tokens.get(id) !== token) return null;
     const current = store.get(id);
-    // Removed while loading.
-    if (!current) return;
+    // Removed, or replaced by a different place, while loading.
+    if (
+      !current ||
+      current.lat !== location.lat ||
+      current.lon !== location.lon ||
+      current.createdAt !== location.createdAt
+    ) {
+      return null;
+    }
     summaries.set(id, summary);
-    // Taken after the load: resolving metadata updates the store itself.
     loadedKeys.set(id, dataKey(current));
     changed();
+    return summary;
   }
 
-  async function run(work: () => Promise<unknown>) {
+  async function run<T>(work: () => Promise<T>): Promise<T> {
     running++;
     changed();
     try {
-      await work();
+      return await work();
     } finally {
       running--;
-      lastUpdated = ctx.now();
       changed();
     }
   }
@@ -114,9 +138,13 @@ export function createDashboardController(
   store.subscribe(() => {
     const locations = store.list();
     forget(new Set(locations.map((l) => l.id)));
-    const stale = locations.filter(
-      (l) => !inFlight.has(l.id) && loadedKeys.get(l.id) !== dataKey(l),
-    );
+    const stale = locations.filter((l) => {
+      const key = dataKey(l);
+      const pending = inFlight.get(l.id);
+      return pending === undefined
+        ? loadedKeys.get(l.id) !== key
+        : pending !== key;
+    });
     if (stale.length === 0) {
       changed();
       return;
@@ -135,9 +163,14 @@ export function createDashboardController(
       return online;
     },
     load({ refresh = false } = {}) {
-      return run(() =>
-        Promise.all(store.list().map((l) => loadOne(l, refresh))),
-      );
+      return run(async () => {
+        const results = await Promise.all(
+          store.list().map((l) => loadOne(l, refresh)),
+        );
+        if (results.some((r) => r !== null && hasData(r))) {
+          lastUpdated = ctx.now();
+        }
+      });
     },
     setOnline(value) {
       const wasOnline = online;
@@ -145,7 +178,7 @@ export function createDashboardController(
       if (value && !wasOnline) {
         const unhealthy = store.list().filter((l) => {
           const s = summaries.get(l.id);
-          return s !== undefined && isUnhealthy(s);
+          return s !== undefined && !inFlight.has(l.id) && needsRetry(s);
         });
         if (unhealthy.length > 0) {
           void run(() => Promise.all(unhealthy.map((l) => loadOne(l, true))));

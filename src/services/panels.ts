@@ -7,7 +7,7 @@ import {
   type LatestObservation,
 } from "../nws/observations";
 import type { NwsMeta, SavedLocation } from "../store/locations";
-import { resolveLocation } from "./resolveLocation";
+import { resolveLocation, saveMetaIfUnchanged } from "./resolveLocation";
 
 /** One independently loading part of a dashboard card. */
 export type Panel<T> = {
@@ -25,13 +25,20 @@ export type LocationSummary = {
   forecast: Panel<ForecastPeriod[]>;
 };
 
-export type LoadOptions = { refresh?: boolean };
+export type LoadOptions = {
+  refresh?: boolean;
+  /** Called with metadata this load resolved, just before it is saved to the store. */
+  onMeta?: (meta: NwsMeta) => void;
+};
 
 export const FORECAST_PERIODS = 2;
 
 const OFFLINE_MESSAGE = "Offline — no saved data yet";
 const SERVICE_MESSAGE = "Weather Service unavailable";
 const PARSE_MESSAGE = "Unexpected response";
+const NO_STATIONS_MESSAGE = "No nearby weather stations";
+
+class NoStationsError extends Error {}
 
 export function loadingSummary(): LocationSummary {
   return {
@@ -42,6 +49,7 @@ export function loadingSummary(): LocationSummary {
 }
 
 export function describeFailure(e: unknown): string {
+  if (e instanceof NoStationsError) return NO_STATIONS_MESSAGE;
   if (e instanceof NwsOfflineError) return OFFLINE_MESSAGE;
   // The service answered, but the body failed validation.
   if (e instanceof NwsError && e.status >= 200 && e.status < 300) {
@@ -65,7 +73,10 @@ async function settle<T>(work: () => Promise<Loaded<T>>): Promise<Panel<T>> {
 async function lookUpMeta(
   ctx: AppContext,
   location: SavedLocation,
-  refresh: boolean,
+  {
+    refresh,
+    onMeta,
+  }: Required<Pick<LoadOptions, "refresh">> & Pick<LoadOptions, "onMeta">,
 ): Promise<NwsMeta> {
   const meta = await resolveLocation(
     ctx.client,
@@ -74,10 +85,11 @@ async function lookUpMeta(
     ctx.now(),
     { refresh },
   );
+  onMeta?.(meta);
   try {
-    ctx.store.updateMeta(location.id, meta);
+    saveMetaIfUnchanged(ctx.store, location, meta);
   } catch {
-    // Removed meanwhile or storage is read-only; this load can still use the meta.
+    // Storage is read-only; this load can still use the meta.
   }
   return meta;
 }
@@ -89,13 +101,13 @@ async function lookUpMeta(
 export async function loadLocationSummary(
   ctx: AppContext,
   location: SavedLocation,
-  { refresh = false }: LoadOptions = {},
+  { refresh = false, onMeta }: LoadOptions = {},
 ): Promise<LocationSummary> {
   const { client } = ctx;
   let meta = location.nws;
   if (!meta) {
     try {
-      meta = await lookUpMeta(ctx, location, refresh);
+      meta = await lookUpMeta(ctx, location, { refresh, onMeta });
     } catch (e) {
       const error = describeFailure(e);
       return {
@@ -113,7 +125,10 @@ export async function loadLocationSummary(
     } catch (e) {
       // The grid cell moved or was retired. Re-resolve once; a second 404 is final.
       if (!(e instanceof NwsNotFound)) throw e;
-      const next = await lookUpMeta(ctx, location, true);
+      const next = await lookUpMeta(ctx, location, {
+        refresh: true,
+        onMeta,
+      });
       return fetchForecast(client, next.forecastUrl, { refresh });
     }
   };
@@ -121,6 +136,7 @@ export async function loadLocationSummary(
   const [alerts, current, forecastPanel] = await Promise.all([
     settle(() => fetchAlerts(client, location.lat, location.lon, { refresh })),
     settle(async () => {
+      if (known.stationIds.length === 0) throw new NoStationsError();
       const latest = await fetchLatestObservation(
         client,
         known.stationIds,

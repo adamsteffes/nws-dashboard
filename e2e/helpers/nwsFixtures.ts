@@ -70,6 +70,16 @@ export function createDashboardRoutes(): {
   const handler: RouteHandler = async (route) => {
     const url = route.request().url();
     const body = bodies[url];
+    // The third nearby station has no recorded reading; say so explicitly
+    // instead of relying on the default answer.
+    if (!body && /\/stations\/[A-Z0-9]+\/observations\/latest$/.test(url)) {
+      return route.fulfill({
+        status: 404,
+        contentType: "application/problem+json",
+        headers: { "access-control-allow-origin": "*" },
+        body: JSON.stringify({ title: "Not Found", status: 404 }),
+      });
+    }
     if (!body) return nwsLocationRoutes(route);
     if (control.delayMs > 0) {
       await new Promise((resolve) => setTimeout(resolve, control.delayMs));
@@ -93,4 +103,17 @@ export function createDashboardRoutes(): {
     });
   };
   return { handler, control };
+}
+
+/** 25 minutes after the KMYZ reading and 10 minutes after KCNK's (both recorded 2026-11-13). */
+export const FIXTURE_NOW = "2026-11-13T08:00:00Z";
+/** More than two hours after both readings, so they count as old. */
+export const FIXTURE_LATER = "2026-11-13T12:00:00Z";
+
+/** The temperature the app shows for a recorded station, converted and rounded like the app does. */
+export function fixtureTempF(station: "KMYZ" | "KCNK"): string {
+  const { properties } = JSON.parse(
+    fixture(`obs_latest_linn-ks_${station}`),
+  ) as { properties: { temperature: { value: number } } };
+  return `${Math.round((properties.temperature.value * 9) / 5 + 32)}°`;
 }

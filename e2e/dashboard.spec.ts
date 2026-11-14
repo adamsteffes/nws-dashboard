@@ -1,12 +1,21 @@
 import type { Page, TestInfo } from "@playwright/test";
 import { expect, test } from "./fixtures";
-import { createDashboardRoutes, LINN } from "./helpers/nwsFixtures";
+import {
+  createDashboardRoutes,
+  FIXTURE_LATER,
+  FIXTURE_NOW,
+  fixtureTempF,
+  LINN,
+} from "./helpers/nwsFixtures";
 
 const { handler, control } = createDashboardRoutes();
 
 test.use({ mockRoutes: { nws: handler } });
 
-test.beforeEach(() => {
+// The recorded readings are from 2026-11-13; a fixed clock keeps station
+// selection ("is the first reading fresh?") independent of the day the tests run.
+test.beforeEach(async ({ page }) => {
+  await page.clock.install({ time: new Date(FIXTURE_NOW) });
   control.alerts = "alerts_active_linn-ks";
   control.forecastStatus = null;
   control.delayMs = 0;
@@ -43,7 +52,7 @@ test("shows temperature, conditions, two forecast periods and radar", async ({
   await addLinn(page);
   await openDashboard(page);
   await expect(card(page)).toHaveCount(1);
-  await expect(card(page).locator(".wx-temp")).toHaveText("30°");
+  await expect(card(page).locator(".wx-temp")).toHaveText(fixtureTempF("KMYZ"));
   await expect(card(page).locator(".wx-desc")).toHaveText("Clear");
   await expect(card(page).locator(".wx-periods li")).toHaveCount(2);
   await expect(card(page).locator(".wx-badge")).toHaveCount(0);
@@ -56,6 +65,17 @@ test("shows temperature, conditions, two forecast periods and radar", async ({
   await expect(
     page.getByRole("main").getByRole("link", { name: "Linn" }),
   ).toHaveAttribute("href", "#/l/linn");
+});
+
+test("falls back to the freshest station when every reading is old", async ({
+  page,
+}) => {
+  await page.clock.setFixedTime(new Date(FIXTURE_LATER));
+  await addLinn(page);
+  await openDashboard(page);
+  // KCNK's reading is the newer of the two old ones.
+  await expect(card(page).locator(".wx-temp")).toHaveText(fixtureTempF("KCNK"));
+  await expect(card(page)).toContainText("Reading is old");
 });
 
 test("alert badge states the count and highest severity", async ({ page }) => {
@@ -71,7 +91,7 @@ test("a failing forecast does not hide the temperature", async ({ page }) => {
   control.forecastStatus = 503;
   await addLinn(page);
   await openDashboard(page);
-  await expect(card(page).locator(".wx-temp")).toHaveText("30°");
+  await expect(card(page).locator(".wx-temp")).toHaveText(fixtureTempF("KMYZ"));
   await expect(card(page).locator(".error")).toHaveText(
     "Forecast: Weather Service unavailable",
   );
@@ -108,7 +128,7 @@ test("offline shows the banner and saved data with a note", async ({
       .getByText(/Showing saved data from \d{1,2}:\d{2} (AM|PM)/)
       .first(),
   ).toBeVisible();
-  await expect(card(page).locator(".wx-temp")).toHaveText("30°");
+  await expect(card(page).locator(".wx-temp")).toHaveText(fixtureTempF("KMYZ"));
 
   await context.setOffline(false);
   await expect(page.getByText("You're offline")).toHaveCount(0);
@@ -143,4 +163,23 @@ test("layout: screenshots, no overflow, 44px targets", async ({
   await page.emulateMedia({ colorScheme: "dark" });
   expect(await fits(), "no horizontal overflow in dark mode").toBe(true);
   await attachScreenshot(page, testInfo, "dashboard-dark");
+});
+
+test("a 320px screen keeps the temperature on one line without overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 700 });
+  await addLinn(page);
+  await openDashboard(page);
+  const temp = card(page).locator(".wx-temp");
+  await expect(temp).toHaveText(fixtureTempF("KMYZ"));
+  const box = await temp.boundingBox();
+  // 3rem with line-height 1 is 48px; a wrapped value would be at least twice that.
+  expect(box?.height).toBeLessThan(60);
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    "no horizontal overflow",
+  ).toBe(true);
 });

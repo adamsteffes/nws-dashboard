@@ -221,6 +221,34 @@ describe("dashboardView", () => {
       expect(el.querySelector("h2")?.textContent).toBe("Linn");
     });
 
+    it("adds the date for saved data from an earlier day", () => {
+      const el = mount({
+        forecast: {
+          status: "stale",
+          data: [period()],
+          fetchedAt: "2026-11-11T21:05:00Z",
+        },
+      });
+      expect(el.textContent).toContain(
+        "Showing saved data from Nov 11, 3:05 PM",
+      );
+    });
+
+    it("names the zone when it differs from the device's", () => {
+      const meta = { ...linnMeta(), timeZone: "Pacific/Honolulu" };
+      const el = mount(
+        {
+          forecast: {
+            status: "stale",
+            data: [period()],
+            fetchedAt: "2026-11-13T07:05:00Z",
+          },
+        },
+        location({ nws: meta }),
+      );
+      expect(el.textContent).toMatch(/Showing saved data from 9:05 PM HST/);
+    });
+
     it("notes stale data in the location's time zone", () => {
       const el = mount({
         forecast: {
@@ -252,6 +280,16 @@ describe("dashboardView", () => {
       expect(
         mount({}, location({ nws: meta })).querySelector("img"),
       ).toBeNull();
+    });
+
+    it("describes the fallback image and restores on a station load", () => {
+      const img = mount().querySelector("img") as HTMLImageElement;
+      img.dispatchEvent(new Event("error"));
+      expect(img.alt).toBe("National radar (station image unavailable)");
+      img.src = "https://radar.weather.gov/ridge/standard/KICT_0.gif";
+      img.dispatchEvent(new Event("load"));
+      expect(img.alt).toBe("Radar for Linn");
+      expect(img.dataset.fallback).toBeUndefined();
     });
 
     it("falls back to the nationwide loop once", () => {

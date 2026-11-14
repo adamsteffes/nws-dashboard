@@ -470,7 +470,11 @@ textarea {
   text-decoration: none;
 }
 
-/* The whole card is the tap target while the link keeps the only accessible name. */
+/*
+ * The whole card is the tap target while the link keeps the only accessible name.
+ * Any future control inside a card needs position: relative and a z-index
+ * above this overlay, or taps will reach the link instead.
+ */
 .wx-link::after {
   content: "";
   position: absolute;
@@ -505,7 +509,13 @@ textarea {
   margin: 0;
 }
 
+.wx-current > div {
+  min-width: 0;
+}
+
 .wx-temp {
+  flex: none;
+  white-space: nowrap;
   font-size: 3rem;
   font-weight: 700;
   line-height: 1;
