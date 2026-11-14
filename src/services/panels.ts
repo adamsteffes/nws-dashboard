@@ -59,9 +59,11 @@ export function describeFailure(e: unknown): string {
   return PARSE_MESSAGE;
 }
 
-type Loaded<T> = { data: T; fetchedAt: string; stale: boolean };
+export type Loaded<T> = { data: T; fetchedAt: string; stale: boolean };
 
-async function settle<T>(work: () => Promise<Loaded<T>>): Promise<Panel<T>> {
+export async function settle<T>(
+  work: () => Promise<Loaded<T>>,
+): Promise<Panel<T>> {
   try {
     const { data, fetchedAt, stale } = await work();
     return { status: stale ? "stale" : "ok", data, fetchedAt };
@@ -70,7 +72,20 @@ async function settle<T>(work: () => Promise<Loaded<T>>): Promise<Panel<T>> {
   }
 }
 
-async function lookUpMeta(
+type Flight = {
+  promise: Promise<NwsMeta>;
+  /** Every caller's onMeta; all run before the save so none sees a stale key. */
+  listeners: Set<(meta: NwsMeta) => void>;
+};
+
+// Keyed by store so contexts that share a store (dashboard and detail page) share lookups.
+const flights = new WeakMap<object, Map<string, Flight>>();
+
+/**
+ * Resolves and saves metadata for a location. Concurrent lookups for the same
+ * place and refresh mode share one request and one store write.
+ */
+export function lookUpMeta(
   ctx: AppContext,
   location: SavedLocation,
   {
@@ -78,20 +93,79 @@ async function lookUpMeta(
     onMeta,
   }: Required<Pick<LoadOptions, "refresh">> & Pick<LoadOptions, "onMeta">,
 ): Promise<NwsMeta> {
-  const meta = await resolveLocation(
-    ctx.client,
+  let active = flights.get(ctx.store);
+  if (!active) {
+    active = new Map();
+    flights.set(ctx.store, active);
+  }
+  const key = [
+    location.id,
+    location.createdAt,
     location.lat,
     location.lon,
+    refresh,
+  ].join("|");
+  let flight = active.get(key);
+  if (!flight) {
+    const map = active;
+    const listeners = new Set<(meta: NwsMeta) => void>();
+    const promise = (async () => {
+      try {
+        const meta = await resolveLocation(
+          ctx.client,
+          location.lat,
+          location.lon,
+          ctx.now(),
+          { refresh },
+        );
+        for (const listener of listeners) listener(meta);
+        try {
+          saveMetaIfUnchanged(ctx.store, location, meta);
+        } catch {
+          // Storage is read-only; this load can still use the meta.
+        }
+        return meta;
+      } finally {
+        map.delete(key);
+      }
+    })();
+    flight = { promise, listeners };
+    active.set(key, flight);
+  }
+  if (onMeta) flight.listeners.add(onMeta);
+  return flight.promise;
+}
+
+/**
+ * Fetches with the known metadata; on a 404 (the grid cell moved or was
+ * retired) re-resolves and tries once more. A second 404 is final.
+ */
+export async function fetchRetryingOnce<T>(
+  known: NwsMeta,
+  reResolve: () => Promise<NwsMeta>,
+  fetchWith: (meta: NwsMeta) => Promise<T>,
+): Promise<T> {
+  try {
+    return await fetchWith(known);
+  } catch (e) {
+    if (!(e instanceof NwsNotFound)) throw e;
+    return fetchWith(await reResolve());
+  }
+}
+
+export async function loadObservation(
+  ctx: AppContext,
+  meta: NwsMeta,
+  refresh: boolean,
+): Promise<Loaded<LatestObservation>> {
+  if (meta.stationIds.length === 0) throw new NoStationsError();
+  const latest = await fetchLatestObservation(
+    ctx.client,
+    meta.stationIds,
     ctx.now(),
     { refresh },
   );
-  onMeta?.(meta);
-  try {
-    saveMetaIfUnchanged(ctx.store, location, meta);
-  } catch {
-    // Storage is read-only; this load can still use the meta.
-  }
-  return meta;
+  return { data: latest, fetchedAt: latest.fetchedAt, stale: latest.stale };
 }
 
 /**
@@ -110,8 +184,11 @@ export async function loadLocationSummary(
       meta = await lookUpMeta(ctx, location, { refresh, onMeta });
     } catch (e) {
       const error = describeFailure(e);
+      // Alerts only need the coordinates.
       return {
-        alerts: { status: "error", error },
+        alerts: await settle(() =>
+          fetchAlerts(client, location.lat, location.lon, { refresh }),
+        ),
         current: { status: "error", error },
         forecast: { status: "error", error },
       };
@@ -119,32 +196,16 @@ export async function loadLocationSummary(
   }
   const known: NwsMeta = meta;
 
-  const forecast = async () => {
-    try {
-      return await fetchForecast(client, known.forecastUrl, { refresh });
-    } catch (e) {
-      // The grid cell moved or was retired. Re-resolve once; a second 404 is final.
-      if (!(e instanceof NwsNotFound)) throw e;
-      const next = await lookUpMeta(ctx, location, {
-        refresh: true,
-        onMeta,
-      });
-      return fetchForecast(client, next.forecastUrl, { refresh });
-    }
-  };
+  const forecast = () =>
+    fetchRetryingOnce(
+      known,
+      () => lookUpMeta(ctx, location, { refresh: true, onMeta }),
+      (meta) => fetchForecast(client, meta.forecastUrl, { refresh }),
+    );
 
   const [alerts, current, forecastPanel] = await Promise.all([
     settle(() => fetchAlerts(client, location.lat, location.lon, { refresh })),
-    settle(async () => {
-      if (known.stationIds.length === 0) throw new NoStationsError();
-      const latest = await fetchLatestObservation(
-        client,
-        known.stationIds,
-        ctx.now(),
-        { refresh },
-      );
-      return { data: latest, fetchedAt: latest.fetchedAt, stale: latest.stale };
-    }),
+    settle(() => loadObservation(ctx, known, refresh)),
     settle(async () => {
       const fetched = await forecast();
       return {
