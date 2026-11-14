@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { ageMinutes, formatAge, formatLocal } from "../../src/util/time";
+import {
+  ageMinutes,
+  deviceZone,
+  formatAge,
+  formatLocal,
+  formatLocalWithZone,
+  zoneAbbreviation,
+} from "../../src/util/time";
 
 const CHI = "America/Chicago";
 const NYC = "America/New_York";
@@ -62,5 +69,36 @@ describe("formatAge", () => {
     [120, "2 hr ago"],
   ])("%s -> %s", (minutes, expected) => {
     expect(formatAge(minutes)).toBe(expected);
+  });
+});
+
+describe("zone helpers", () => {
+  const iso = "2026-11-13T21:00:00Z";
+
+  it("names the zone in effect on the date", () => {
+    expect(zoneAbbreviation(new Date(iso), CHI)).toBe("CST");
+    expect(zoneAbbreviation(new Date("2026-07-01T12:00:00Z"), CHI)).toBe("CDT");
+    expect(zoneAbbreviation(new Date("nope"), CHI)).toBeUndefined();
+  });
+
+  it("reports the device zone", () => {
+    expect(deviceZone()).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone);
+  });
+
+  it("adds the zone name when asked or when it differs from the device's", () => {
+    expect(formatLocalWithZone(iso, CHI, "time", { alwaysZone: true })).toBe(
+      "3:00 PM CST",
+    );
+    const other = deviceZone() === CHI ? NYC : CHI;
+    expect(formatLocalWithZone(iso, other, "time")).toMatch(/ [A-Z]{2,4}$/);
+    expect(formatLocalWithZone(iso, deviceZone(), "time")).toBe(
+      formatLocal(iso, deviceZone(), "time"),
+    );
+  });
+
+  it("leaves an invalid time as a dash", () => {
+    expect(formatLocalWithZone("nope", CHI, "time", { alwaysZone: true })).toBe(
+      "—",
+    );
   });
 });

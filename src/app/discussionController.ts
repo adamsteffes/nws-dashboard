@@ -55,6 +55,15 @@ async function settle<T>(work: Promise<Fetched<T>>): Promise<Panel<T>> {
   }
 }
 
+function dataKey(location: SavedLocation): string {
+  return JSON.stringify([
+    location.lat,
+    location.lon,
+    location.createdAt,
+    location.nws?.cwa,
+  ]);
+}
+
 export function createDiscussionController(
   ctx: AppContext,
   options: DiscussionControllerOptions,
@@ -69,14 +78,24 @@ export function createDiscussionController(
   /** Latest load; an older load's result is dropped. */
   let token = 0;
 
-  async function cwaOf(location: SavedLocation): Promise<string> {
+  /** What the open page's data depends on; renames and other edits don't need a reload. */
+  let loadedKey: string | null = null;
+
+  async function cwaOf(
+    location: SavedLocation,
+    mine: number,
+    refresh: boolean,
+  ): Promise<string> {
     if (location.nws) return location.nws.cwa;
     const meta = await resolveLocation(
       ctx.client,
       location.lat,
       location.lon,
       ctx.now(),
+      { refresh },
     );
+    // The metadata saved below is not a reason to start over.
+    if (mine === token) loadedKey = dataKey({ ...location, nws: meta });
     try {
       saveMetaIfUnchanged(ctx.store, location, meta);
     } catch {
@@ -89,9 +108,10 @@ export function createDiscussionController(
     location: SavedLocation,
     wantProduct: string | undefined,
     refresh: boolean,
+    mine: number,
   ): Promise<[Panel<ProductRef[]>, Panel<Product>]> {
     try {
-      const cwa = await cwaOf(location);
+      const cwa = await cwaOf(location, mine, refresh);
       if (wantProduct !== undefined) {
         return await Promise.all([
           settle(fetchAfdList(ctx.client, cwa, { refresh })),
@@ -117,6 +137,7 @@ export function createDiscussionController(
   async function load(refresh: boolean): Promise<void> {
     const mine = ++token;
     const location = id === undefined ? undefined : ctx.store.get(id);
+    loadedKey = location ? dataKey(location) : null;
     if (!location) {
       changed();
       return;
@@ -128,8 +149,19 @@ export function createDiscussionController(
         location,
         productId,
         refresh,
+        mine,
       );
       if (mine !== token) return;
+      // Removed, or replaced by a different place, while loading.
+      const current = ctx.store.get(location.id);
+      if (
+        !current ||
+        current.lat !== location.lat ||
+        current.lon !== location.lon ||
+        current.createdAt !== location.createdAt
+      ) {
+        return;
+      }
       list = nextList;
       product = nextProduct;
     } finally {
@@ -137,6 +169,19 @@ export function createDiscussionController(
       changed();
     }
   }
+
+  ctx.store.subscribe(() => {
+    if (id === undefined) return;
+    const current = ctx.store.get(id);
+    const key = current ? dataKey(current) : null;
+    if (key === loadedKey) {
+      changed();
+      return;
+    }
+    list = { status: "loading" };
+    product = { status: "loading" };
+    void load(false);
+  });
 
   return {
     get refreshing() {

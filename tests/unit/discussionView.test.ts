@@ -127,10 +127,11 @@ describe("discussionView", () => {
       "AVIATION /06Z TAFS THROUGH 06Z SATURDAY/",
       "TOP WATCHES/WARNINGS/ADVISORIES",
     ]);
-    for (const a of links) {
-      const id = a.getAttribute("href")?.slice(1) ?? "";
-      expect(host.querySelector(`section#${id}`)).not.toBeNull();
-    }
+    // Each entry scrolls to the section with the same title.
+    const titles = [...host.querySelectorAll("section.afd-section h3")].map(
+      (h) => h.textContent,
+    );
+    expect(titles).toEqual(links.map((a) => a.textContent));
     const headings = [...host.querySelectorAll("section.afd-section h3")];
     expect(headings.map((h) => h.textContent)).toContain("DISCUSSION");
     expect(host.querySelector(".afd-section pre")).not.toBeNull();
@@ -189,6 +190,32 @@ describe("discussionView", () => {
     );
     expect(hrefs).not.toContain(
       routeHref({ name: "discussion", id: "linn", productId: older.id }),
+    );
+  });
+
+  it("keeps the page's own route in the table of contents links", () => {
+    const host = draw(props({ sections: true }));
+    for (const a of host.querySelectorAll(".afd-toc a")) {
+      expect(a.getAttribute("href")).toBe("#/l/linn/afd");
+    }
+    const older = refs[1] as ProductRef;
+    const other = draw(props({ sections: true, productId: older.id }));
+    expect(other.querySelector(".afd-toc a")?.getAttribute("href")).toBe(
+      routeHref({ name: "discussion", id: "linn", productId: older.id }),
+    );
+  });
+
+  it("marks the requested issuance as showing even if its product failed", () => {
+    const requested = refs[2] as ProductRef;
+    const host = draw(
+      props({
+        productId: requested.id,
+        product: { status: "error", error: "Weather Service unavailable" },
+      }),
+    );
+    expect(host.querySelectorAll(".afd-current")).toHaveLength(1);
+    expect(host.querySelector(".afd-current")?.textContent).toContain(
+      "(showing)",
     );
   });
 

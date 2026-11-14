@@ -23,6 +23,9 @@ const list = readFixture("afd_list_linn-ks") as {
 };
 const NEWEST = list["@graph"][0]?.id as string;
 const OLDER = list["@graph"][1]?.id as string;
+const MIAMI_ID = (
+  readFixture("afd_list_miami-fl") as { "@graph": { id: string }[] }
+)["@graph"][0]?.id as string;
 const THIRD = list["@graph"][2]?.id as string;
 const olderBody = {
   ...readFixture("afd_product_linn-ks"),
@@ -200,6 +203,58 @@ describe("createDiscussionController", () => {
     await controller.open("nowhere");
     expect(controller.viewProps().location).toBeUndefined();
     expect(fetchFn.calls).toHaveLength(0);
+  });
+
+  it("drops results for a location replaced mid-load and loads the new place", async () => {
+    const { controller, store, location, count } = setup(
+      {},
+      {
+        [afdListUrl("MFL")]: "afd_list_miami-fl",
+        [productUrl(MIAMI_ID)]: "afd_product_miami-fl",
+      },
+    );
+    const first = controller.open(location.id);
+    const old = store.get(location.id);
+    if (!old?.nws) throw new Error("setup has meta");
+    store.replaceAll([
+      {
+        ...old,
+        name: "Miami",
+        lat: 25.77,
+        lon: -80.19,
+        createdAt: "2026-11-14T00:00:00.000Z",
+        nws: { ...old.nws, cwa: "MFL", timeZone: "America/New_York" },
+      },
+    ]);
+    await first;
+    await vi.waitFor(() => expect(controller.refreshing).toBe(false));
+    const props = controller.viewProps();
+    expect(props.location?.name).toBe("Miami");
+    expect(props.product.data?.id).toBe(MIAMI_ID);
+    expect(count(afdListUrl("MFL"))).toBe(1);
+  });
+
+  it("loads when a location that was missing appears", async () => {
+    const { controller, store, location, fetchFn } = setup();
+    await controller.open("later");
+    expect(fetchFn.calls).toHaveLength(0);
+    const loc = store.get(location.id);
+    if (!loc) throw new Error("setup has a location");
+    store.replaceAll([loc, { ...loc, id: "later" }]);
+    await vi.waitFor(() =>
+      expect(controller.viewProps().product.data?.id).toBe(NEWEST),
+    );
+  });
+
+  it("does not reload for renames or for metadata it saved itself", async () => {
+    const { controller, store, location, count } = setup({ withMeta: false });
+    await controller.open(location.id);
+    expect(store.get(location.id)?.nws?.cwa).toBe("TOP");
+    expect(count(LIST_URL)).toBe(1);
+    store.rename(location.id, "Renamed");
+    await Promise.resolve();
+    expect(count(LIST_URL)).toBe(1);
+    expect(controller.viewProps().product.status).toBe("ok");
   });
 
   it("remembers the sections toggle and notifies", () => {

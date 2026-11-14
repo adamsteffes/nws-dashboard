@@ -3,32 +3,15 @@ import type { DiscussionViewProps } from "../app/discussionController";
 import { type AfdSection, type ProductRef, splitSections } from "../nws/afd";
 import { routeHref } from "../router";
 import type { Panel } from "../services/panels";
-import { formatLocal } from "../util/time";
+import { deviceZone, formatLocalWithZone } from "../util/time";
 
 export type DiscussionViewHandlers = {
   onSections: (on: boolean) => void;
 };
 
-const deviceZone = (): string =>
-  Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-function zoneAbbreviation(iso: string, zone: string): string | undefined {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return undefined;
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: zone,
-    timeZoneName: "short",
-  })
-    .formatToParts(date)
-    .find((part) => part.type === "timeZoneName")?.value;
-}
-
 /** Date and local time in the location's zone; the zone name keeps it unambiguous. */
-function localIssued(iso: string, zone: string): string {
-  const when = formatLocal(iso, zone, "dateTime");
-  const abbreviation = zoneAbbreviation(iso, zone);
-  return abbreviation && when !== "—" ? `${when} ${abbreviation}` : when;
-}
+const localIssued = (iso: string, zone: string): string =>
+  formatLocalWithZone(iso, zone, "dateTime", { alwaysZone: true });
 
 const sectionId = (index: number): string => `afd-section-${index}`;
 
@@ -54,7 +37,7 @@ function staleNote(fetchedAt: string | undefined, zone: string) {
   return html`<p class="panel-note muted">Showing saved data${when === "—" ? nothing : html` from ${when}`}</p>`;
 }
 
-function toc(sections: AfdSection[]) {
+function toc(sections: AfdSection[], pageHref: string) {
   const entries = sections.flatMap((section, index) =>
     section.title === null ? [] : [{ title: section.title, index }],
   );
@@ -63,16 +46,16 @@ function toc(sections: AfdSection[]) {
     <nav class="afd-toc" aria-label="Sections">
       <ol>${entries.map(
         ({ title, index }) =>
-          html`<li><a href="#${sectionId(index)}" @click=${(e: Event) => jumpToSection(e, sectionId(index))}>${title}</a></li>`,
+          html`<li><a href=${pageHref} @click=${(e: Event) => jumpToSection(e, sectionId(index))}>${title}</a></li>`,
       )}</ol>
     </nav>
   `;
 }
 
-function sectionedText(text: string) {
+function sectionedText(text: string, pageHref: string) {
   const sections = splitSections(text);
   return html`
-    ${toc(sections)}
+    ${toc(sections, pageHref)}
     ${sections.map(
       (section, index) => html`
         <section id=${sectionId(index)} class="afd-section">
@@ -123,6 +106,12 @@ export function discussionView(
     `;
   }
   const zone = location.nws?.timeZone ?? deviceZone();
+  // The links keep the page's own URL so a copied link is a valid route; clicks only scroll.
+  const pageHref = routeHref({
+    name: "discussion",
+    id: location.id,
+    ...(props.productId === undefined ? {} : { productId: props.productId }),
+  });
   const data = product.data;
   const office =
     data?.issuingOffice ||
@@ -150,7 +139,7 @@ export function discussionView(
       ${olderThanNewest ? html`<p class="panel-note muted">The newest discussion couldn't be loaded; this is an older one.</p>` : nothing}
       ${product.status === "stale" ? staleNote(product.fetchedAt, zone) : nothing}
       <button type="button" class="btn btn-secondary afd-toggle" aria-pressed=${sections ? "true" : "false"} @click=${() => handlers.onSections(!sections)}>Sections</button>
-      ${sections ? sectionedText(data.text) : html`<pre class="afd-text">${data.text}</pre>`}
+      ${sections ? sectionedText(data.text, pageHref) : html`<pre class="afd-text">${data.text}</pre>`}
     `;
   }
 
@@ -159,7 +148,7 @@ export function discussionView(
       <a class="back-link" href=${routeHref({ name: "location", id: location.id })}>← Back to ${location.name}</a>
       <h2>Forecast discussion</h2>
       ${body}
-      ${history(list, data?.id, location.id, zone)}
+      ${history(list, data?.id ?? props.productId, location.id, zone)}
     </section>
   `;
 }
