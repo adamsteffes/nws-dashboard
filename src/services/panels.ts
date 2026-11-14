@@ -72,7 +72,20 @@ export async function settle<T>(
   }
 }
 
-export async function lookUpMeta(
+type Flight = {
+  promise: Promise<NwsMeta>;
+  /** Every caller's onMeta; all run before the save so none sees a stale key. */
+  listeners: Set<(meta: NwsMeta) => void>;
+};
+
+// Keyed by store so contexts that share a store (dashboard and detail page) share lookups.
+const flights = new WeakMap<object, Map<string, Flight>>();
+
+/**
+ * Resolves and saves metadata for a location. Concurrent lookups for the same
+ * place and refresh mode share one request and one store write.
+ */
+export function lookUpMeta(
   ctx: AppContext,
   location: SavedLocation,
   {
@@ -80,20 +93,47 @@ export async function lookUpMeta(
     onMeta,
   }: Required<Pick<LoadOptions, "refresh">> & Pick<LoadOptions, "onMeta">,
 ): Promise<NwsMeta> {
-  const meta = await resolveLocation(
-    ctx.client,
+  let active = flights.get(ctx.store);
+  if (!active) {
+    active = new Map();
+    flights.set(ctx.store, active);
+  }
+  const key = [
+    location.id,
+    location.createdAt,
     location.lat,
     location.lon,
-    ctx.now(),
-    { refresh },
-  );
-  onMeta?.(meta);
-  try {
-    saveMetaIfUnchanged(ctx.store, location, meta);
-  } catch {
-    // Storage is read-only; this load can still use the meta.
+    refresh,
+  ].join("|");
+  let flight = active.get(key);
+  if (!flight) {
+    const map = active;
+    const listeners = new Set<(meta: NwsMeta) => void>();
+    const promise = (async () => {
+      try {
+        const meta = await resolveLocation(
+          ctx.client,
+          location.lat,
+          location.lon,
+          ctx.now(),
+          { refresh },
+        );
+        for (const listener of listeners) listener(meta);
+        try {
+          saveMetaIfUnchanged(ctx.store, location, meta);
+        } catch {
+          // Storage is read-only; this load can still use the meta.
+        }
+        return meta;
+      } finally {
+        map.delete(key);
+      }
+    })();
+    flight = { promise, listeners };
+    active.set(key, flight);
   }
-  return meta;
+  if (onMeta) flight.listeners.add(onMeta);
+  return flight.promise;
 }
 
 /**
@@ -144,8 +184,11 @@ export async function loadLocationSummary(
       meta = await lookUpMeta(ctx, location, { refresh, onMeta });
     } catch (e) {
       const error = describeFailure(e);
+      // Alerts only need the coordinates.
       return {
-        alerts: { status: "error", error },
+        alerts: await settle(() =>
+          fetchAlerts(client, location.lat, location.lon, { refresh }),
+        ),
         current: { status: "error", error },
         forecast: { status: "error", error },
       };

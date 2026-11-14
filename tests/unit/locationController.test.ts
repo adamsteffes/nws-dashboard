@@ -13,6 +13,8 @@ import {
   KMYZ_URL,
   linnMeta,
   linnRoutes,
+  NOW,
+  POINT_URL,
 } from "../helpers/dashboardSetup";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -238,5 +240,80 @@ describe("createLocationController", () => {
     controller.setOnline(true);
     expect(controller.refreshing).toBe(false);
     expect(fetchFn.calls).toHaveLength(before);
+  });
+
+  it("does not load in the background after the page is closed", async () => {
+    const { controller, store, location, count } = setup();
+    await controller.open(location.id);
+    controller.close();
+    store.updateMeta(location.id, {
+      ...linnMeta(),
+      resolvedAt: "2026-11-14T00:00:00.000Z",
+    });
+    expect(controller.refreshing).toBe(false);
+    expect(count(FORECAST_URL)).toBe(1);
+    // The data stays, so coming back shows it at once.
+    expect(controller.viewProps(location.id).detail.forecast.status).toBe("ok");
+  });
+
+  it("ignores connectivity changes while closed, and reloads on reopen", async () => {
+    const shared = fakeLastGood();
+    const first = dashboardSetup({ lastGood: shared.lastGood });
+    await createLocationController(first.ctx, { onChange: () => {} }).open(
+      first.location.id,
+    );
+    const { controller, location, setOnline, count } = setup({
+      lastGood: shared.lastGood,
+      online: false,
+    });
+    await controller.open(location.id);
+    controller.close();
+    setOnline(true);
+    controller.setOnline(true);
+    expect(controller.refreshing).toBe(false);
+    expect(count(FORECAST_URL)).toBe(0);
+    await controller.open(location.id);
+    expect(controller.viewProps(location.id).detail.forecast.status).toBe("ok");
+  });
+
+  it("does not load the hidden dashboard when it saves metadata", async () => {
+    const base = dashboardSetup({ withMeta: false });
+    const other = base.store.add({ name: "Other", lat: 40, lon: -100 });
+    const dashboard = createDashboardController(base.ctx, {
+      onChange: () => {},
+    });
+    const controller = createLocationController(base.ctx, {
+      onChange: () => {},
+    });
+    await controller.open(base.location.id);
+    await tick();
+    expect(dashboard.refreshing).toBe(false);
+    expect(
+      base.fetchFn.calls.some((c) => c.url === alertsUrl(other.lat, other.lon)),
+    ).toBe(false);
+  });
+
+  it("shares one metadata lookup between the dashboard and the detail page", async () => {
+    const base = dashboardSetup({ withMeta: false });
+    let t = NOW.getTime();
+    const ctx = {
+      ...base.ctx,
+      now: () => {
+        t += 1000;
+        return new Date(t);
+      },
+    };
+    const writes: string[] = [];
+    base.store.subscribe(() => writes.push("write"));
+    const dashboard = createDashboardController(ctx, { onChange: () => {} });
+    const controller = createLocationController(ctx, { onChange: () => {} });
+    await Promise.all([dashboard.load(), controller.open(base.location.id)]);
+    await tick();
+    expect(base.count(POINT_URL)).toBe(1);
+    expect(writes).toHaveLength(1);
+    expect(base.count(HOURLY_URL)).toBe(1);
+    expect(controller.viewProps(base.location.id).detail.hourly.status).toBe(
+      "ok",
+    );
   });
 });

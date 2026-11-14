@@ -83,7 +83,9 @@ describe("loadLocationDetail", () => {
       routes: { ...linnRoutes(), [POINT_URL]: 503 },
     });
     const detail = await loadLocationDetail(ctx, location);
-    for (const panel of Object.values(detail)) {
+    // Alerts only need the coordinates, so they still load.
+    expect(detail.alerts.status).toBe("ok");
+    for (const panel of [detail.current, detail.forecast, detail.hourly]) {
       expect(panel.status).toBe("error");
     }
   });

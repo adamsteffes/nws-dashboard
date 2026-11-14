@@ -126,7 +126,9 @@ describe("loadLocationSummary", () => {
       routes: { ...linnRoutes(), [POINT_URL]: [503, 503, 503] },
     });
     const summary = await loadLocationSummary(ctx, location);
-    for (const panel of [summary.alerts, summary.current, summary.forecast]) {
+    // Alerts only need the coordinates, so they still load.
+    expect(summary.alerts.status).toBe("ok");
+    for (const panel of [summary.current, summary.forecast]) {
       expect(panel).toEqual({
         status: "error",
         error: "Weather Service unavailable",

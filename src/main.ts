@@ -132,6 +132,7 @@ createRouter((next) => {
   ) {
     void dashboard.load();
   }
+  if (next.name !== "location") locationPage.close();
   if (next.name === "location" && changed) void locationPage.open(next.id);
   if (changed) {
     // Screen readers get no page load, so announce the new page by focusing its heading.

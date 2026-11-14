@@ -139,6 +139,9 @@ export function createDashboardController(
     const locations = store.list();
     forget(new Set(locations.map((l) => l.id)));
     const stale = locations.filter((l) => {
+      // Before its first load the dashboard is hidden (a deep link, or the
+      // detail page saving metadata); the first visit loads everything.
+      if (loadedKeys.size === 0 && inFlight.size === 0) return false;
       const key = dataKey(l);
       const pending = inFlight.get(l.id);
       return pending === undefined

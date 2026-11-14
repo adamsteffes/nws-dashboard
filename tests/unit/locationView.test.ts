@@ -72,11 +72,8 @@ describe("locationView", () => {
 
   it("renders the header with place, coordinates and links", async () => {
     const { detail, location } = await loaded();
-    const el = mount({ detail }, { ...location, name: "<b>Linn</b>" });
-    expect(el.querySelector(".loc-detail-head h2")?.textContent).toBe(
-      "<b>Linn</b>",
-    );
-    expect(el.querySelector(".loc-detail-head b")).toBeNull();
+    const el = mount({ detail }, location);
+    expect(el.querySelector(".loc-detail-head h2")).toBeNull();
     expect(text(el.querySelector(".loc-detail-head p"))).toBe(
       "Linn, KS · 39.7456, -97.0892",
     );
@@ -148,7 +145,7 @@ describe("locationView", () => {
       };
       const el = mount({ detail }, location);
       const body = el.querySelector(".alert-body");
-      expect(text(body?.querySelector("h4"))).toBe("What to do");
+      expect(text(body?.querySelector("h3"))).toBe("What to do");
       expect(body?.querySelector(".pre-text")?.textContent).toBe(
         "Line one\n\nLine two",
       );
@@ -359,6 +356,13 @@ describe("locationView", () => {
       // The fixture is in Central time; the viewer's zone must not matter.
       const first = rows[0]?.querySelector("th");
       expect(text(first)).toMatch(/^\d{1,2}:00 (AM|PM)$/);
+      expect(el.querySelectorAll("table.hourly tbody")).toHaveLength(3);
+      expect(text(el.querySelector("table.hourly caption"))).toBe(
+        "Times are CST",
+      );
+      expect(el.querySelector("tr.day-row th")?.getAttribute("scope")).toBe(
+        "rowgroup",
+      );
       const days = [...el.querySelectorAll("tr.day-row")].map((r) => text(r));
       expect(days).toEqual(["Friday", "Saturday", "Sunday"]);
       const cells = [...(rows[1]?.querySelectorAll("td") ?? [])];
@@ -366,6 +370,73 @@ describe("locationView", () => {
       expect(el.querySelector(".table-scroll")?.getAttribute("tabindex")).toBe(
         "0",
       );
+    });
+  });
+
+  describe("hourly edge cases", () => {
+    it("drops hours that ended while the page stayed open", async () => {
+      const { detail, location } = await loaded();
+      const later = new Date("2026-11-13T20:00:00Z");
+      const el = mount({ detail, now: later }, location);
+      const rows = el.querySelectorAll("table.hourly tbody tr:not(.day-row)");
+      // The list started at 08:00Z; twelve hours have passed.
+      expect(rows).toHaveLength(36);
+    });
+
+    it("says so when every hour has passed", async () => {
+      const { detail, location } = await loaded();
+      const el = mount(
+        { detail, now: new Date("2027-01-01T00:00:00Z") },
+        location,
+      );
+      expect(el.querySelector("table.hourly")).toBeNull();
+      expect(text(el.querySelector("#hourly-h")?.parentElement)).toContain(
+        "No hourly forecast available",
+      );
+    });
+
+    it("names the zone again where the clocks go back", () => {
+      const detail = loadingDetail();
+      const hour = (iso: string) => ({
+        number: 1,
+        name: "",
+        startTime: iso,
+        endTime: new Date(Date.parse(iso) + 3_600_000).toISOString(),
+        isDaytime: false,
+        temperature: 50,
+        temperatureTrend: null,
+        precipChance: null,
+        windSpeed: "5 mph",
+        windDirection: "N",
+        icon: null,
+        shortForecast: "Clear",
+        detailedForecast: "",
+      });
+      detail.hourly = {
+        status: "ok",
+        data: [
+          hour("2026-11-01T05:30:00Z"),
+          hour("2026-11-01T06:30:00Z"),
+          hour("2026-11-01T07:30:00Z"),
+        ],
+      };
+      const meta = linnMeta();
+      const el = mount(
+        { detail, now: new Date("2026-11-01T05:00:00Z") },
+        {
+          id: "l",
+          name: "L",
+          lat: 1,
+          lon: 2,
+          createdAt: "x",
+          nws: { ...meta, timeZone: "America/Chicago" },
+        },
+      );
+      const times = [...el.querySelectorAll("tbody tr:not(.day-row) th")].map(
+        (t) => text(t),
+      );
+      expect(times).toEqual(["12:30 AM", "1:30 AM", "1:30 AM CST"]);
+      expect(text(el.querySelector("caption"))).toBe("Times are CDT");
     });
   });
 

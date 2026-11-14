@@ -99,7 +99,7 @@ test("lists alerts most severe first, expandable", async ({ page }) => {
   await expect(items.first().locator(".alert-body")).toBeHidden();
   await items.first().locator("summary").click();
   await expect(items.first().locator(".alert-body")).toBeVisible();
-  await expect(items.first().locator("h4")).toHaveText("What to do");
+  await expect(items.first().locator("h3")).toHaveText("What to do");
 });
 
 test("shows current conditions", async ({ page }) => {

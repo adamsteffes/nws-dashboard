@@ -20,6 +20,8 @@ export type LocationController = {
   readonly online: boolean;
   /** Shows the location and loads its data (from the client's cache when fresh). */
   open(id: string): Promise<void>;
+  /** Leaves the page: store changes and connectivity no longer start loads. Data is kept. */
+  close(): void;
   /** Reloads the open location, bypassing the cache. */
   refresh(): Promise<void>;
   /** Tells the controller connectivity changed; coming back online reloads unhealthy panels. */
@@ -39,6 +41,7 @@ function dataKey(location: SavedLocation): string {
   return JSON.stringify([
     location.lat,
     location.lon,
+    location.createdAt,
     nws?.resolvedAt,
     nws?.forecastUrl,
     nws?.forecastHourlyUrl,
@@ -63,6 +66,7 @@ export function createLocationController(
   const { store } = ctx;
   const changed = options.onChange;
   let openId: string | null = null;
+  let active = false;
   let detail: LocationDetail = loadingDetail();
   let loadedKey: string | null = null;
   /** What the running load is loading; null when idle. */
@@ -114,7 +118,7 @@ export function createLocationController(
   }
 
   store.subscribe(() => {
-    if (openId === null) return;
+    if (!active || openId === null) return;
     const location = store.get(openId);
     if (!location) {
       reset();
@@ -135,6 +139,7 @@ export function createLocationController(
       return online;
     },
     open(id) {
+      active = true;
       // Keep showing the old data of the same page; another page starts empty.
       if (openId !== id) {
         openId = id;
@@ -142,13 +147,22 @@ export function createLocationController(
       }
       return load(id, false);
     },
+    close() {
+      active = false;
+    },
     refresh() {
       return openId === null ? Promise.resolve() : load(openId, true);
     },
     setOnline(value) {
       const wasOnline = online;
       online = value;
-      if (value && !wasOnline && openId !== null && inFlight === null) {
+      if (
+        value &&
+        !wasOnline &&
+        active &&
+        openId !== null &&
+        inFlight === null
+      ) {
         if (needsRetry(detail)) {
           void load(openId, true);
           return;

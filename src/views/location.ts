@@ -2,10 +2,11 @@ import { html, nothing, type TemplateResult } from "lit-html";
 import { repeat } from "lit-html/directives/repeat.js";
 import type { LocationViewProps } from "../app/locationController";
 import type { Alert } from "../nws/alerts";
-import type { Forecast, ForecastPeriod } from "../nws/forecast";
+import { type Forecast, type ForecastPeriod, nextHours } from "../nws/forecast";
 import type { LatestObservation } from "../nws/observations";
 import { radarUrls } from "../nws/radar";
 import { routeHref } from "../router";
+import { HOURLY_COUNT } from "../services/detail";
 import type { Panel } from "../services/panels";
 import type { NwsMeta, SavedLocation } from "../store/locations";
 import { ageMinutes, formatAge, formatLocal } from "../util/time";
@@ -22,6 +23,7 @@ import {
   severityClass,
   staleNote,
   swapRadarOnError,
+  zoneAbbreviation,
 } from "./shared";
 
 const MIN_PRECIP_CHANCE = 10;
@@ -65,7 +67,7 @@ function alertItem(alert: Alert, zone: string) {
       ${alert.description ? html`<p class="pre-text">${alert.description}</p>` : nothing}
       ${
         alert.instruction
-          ? html`<div><h4>What to do</h4><p class="pre-text">${alert.instruction}</p></div>`
+          ? html`<div><h3>What to do</h3><p class="pre-text">${alert.instruction}</p></div>`
           : nothing
       }
       <dl class="facts">
@@ -213,23 +215,51 @@ function hourWind(p: ForecastPeriod): string {
   return [p.windDirection, p.windSpeed].filter(Boolean).join(" ") || NO_VALUE;
 }
 
-function hourRows(periods: ForecastPeriod[], zone: string) {
-  let previousDay = "";
-  return periods.map((p) => {
+/** One tbody per local day, so the day heading groups its rows. */
+function hourGroups(periods: ForecastPeriod[], zone: string) {
+  const groups: { day: string; start: string; rows: ForecastPeriod[] }[] = [];
+  for (const p of periods) {
     const day = dayKey(new Date(p.startTime), zone);
-    const separator =
-      day === previousDay
-        ? nothing
-        : html`<tr class="day-row"><th colspan="5" scope="colgroup"><span>${formatLocal(p.startTime, zone, "weekday")}</span></th></tr>`;
-    previousDay = day;
-    return html`${separator}<tr>
-      <th scope="row">${formatLocal(p.startTime, zone, "time")}</th>
-      <td>${degrees(p.temperature)}</td>
-      <td>${p.precipChance !== null && p.precipChance >= MIN_PRECIP_CHANCE ? `${p.precipChance}%` : NO_VALUE}</td>
-      <td>${hourWind(p)}</td>
-      <td>${p.shortForecast}</td>
-    </tr>`;
+    const last = groups[groups.length - 1];
+    if (last && last.day === day) last.rows.push(p);
+    else groups.push({ day, start: p.startTime, rows: [p] });
+  }
+  let previousZone: string | undefined;
+  return groups.map((g) => {
+    const rows = g.rows.map((p) => {
+      const abbreviation = zoneAbbreviation(new Date(p.startTime), zone);
+      // Name the zone again where it changes (the night clocks go back).
+      const changed =
+        previousZone !== undefined && abbreviation !== previousZone;
+      previousZone = abbreviation;
+      const time = formatLocal(p.startTime, zone, "time");
+      return html`<tr>
+        <th scope="row">${changed && abbreviation ? `${time} ${abbreviation}` : time}</th>
+        <td>${degrees(p.temperature)}</td>
+        <td>${p.precipChance !== null && p.precipChance >= MIN_PRECIP_CHANCE ? `${p.precipChance}%` : NO_VALUE}</td>
+        <td>${hourWind(p)}</td>
+        <td>${p.shortForecast}</td>
+      </tr>`;
+    });
+    return html`<tbody>
+      <tr class="day-row"><th colspan="5" scope="rowgroup"><span>${formatLocal(g.start, zone, "weekday")}</span></th></tr>
+      ${rows}
+    </tbody>`;
   });
+}
+
+function hourlyBody(periods: ForecastPeriod[], zone: string) {
+  if (periods.length === 0) {
+    return html`<p>No hourly forecast available</p>`;
+  }
+  const first = zoneAbbreviation(new Date(periods[0]?.startTime ?? ""), zone);
+  return html`<div class="table-scroll" role="region" aria-label="Hourly table" tabindex="0">
+    <table class="hourly">
+      <caption class="muted">${first ? `Times are ${first}` : "Times are local to the location"}</caption>
+      <thead><tr><th scope="col">Time</th><th scope="col">Temp</th><th scope="col">Precip</th><th scope="col">Wind</th><th scope="col">Forecast</th></tr></thead>
+      ${hourGroups(periods, zone)}
+    </table>
+  </div>`;
 }
 
 function hourlySection(
@@ -237,6 +267,12 @@ function hourlySection(
   zone: string,
   now: Date,
 ) {
+  // A page left open should not keep hours that have passed.
+  const upcoming = nextHours(
+    { updated: null, generatedAt: null, periods: panel.data ?? [] },
+    now,
+    HOURLY_COUNT,
+  );
   return html`<section class="card stack" aria-labelledby="hourly-h">
     <h2 id="hourly-h">Next 48 hours</h2>
     ${
@@ -244,12 +280,7 @@ function hourlySection(
         ? loadingNote("Hourly forecast")
         : panel.status === "error"
           ? errorNote("Hourly forecast", panel.error)
-          : html`<div class="table-scroll" role="region" aria-labelledby="hourly-h" tabindex="0">
-              <table class="hourly">
-                <thead><tr><th scope="col">Time</th><th scope="col">Temp</th><th scope="col">Precip</th><th scope="col">Wind</th><th scope="col">Forecast</th></tr></thead>
-                <tbody>${hourRows(panel.data ?? [], zone)}</tbody>
-              </table>
-            </div>
+          : html`${hourlyBody(upcoming, zone)}
             ${panel.status === "stale" ? staleNote(panel.fetchedAt, zone, now) : nothing}`
     }
   </section>`;
@@ -258,7 +289,6 @@ function hourlySection(
 function header(location: SavedLocation) {
   const meta = location.nws;
   return html`<section class="card stack loc-detail-head">
-    <h2>${location.name}</h2>
     <p class="muted">${meta ? html`${meta.city}, ${meta.state} · ` : nothing}${location.lat}, ${location.lon}</p>
     <nav class="button-row" aria-label="Location">
       <a class="btn btn-secondary" href=${routeHref({ name: "dashboard" })}>Back to Dashboard</a>

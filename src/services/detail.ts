@@ -55,8 +55,11 @@ export async function loadLocationDetail(
       meta = await lookUpMeta(ctx, location, { refresh, onMeta });
     } catch (e) {
       const error = describeFailure(e);
+      // Alerts only need the coordinates.
       return {
-        alerts: { status: "error", error },
+        alerts: await settle(() =>
+          fetchAlerts(client, location.lat, location.lon, { refresh }),
+        ),
         current: { status: "error", error },
         forecast: { status: "error", error },
         hourly: { status: "error", error },

@@ -574,14 +574,8 @@ textarea {
   min-width: 0;
 }
 
-.loc-detail-head h2,
 .loc-detail-head p {
   margin: 0;
-}
-
-h4 {
-  margin: 0 0 4px;
-  font-size: 1rem;
 }
 
 .pre-text {
@@ -667,11 +661,11 @@ h4 {
 
 /* The table scrolls inside this box so the page itself never scrolls sideways. */
 .table-scroll {
-  max-height: 70vh;
+  max-height: 50vh;
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: 8px;
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
 }
 
 .hourly {
@@ -680,6 +674,12 @@ h4 {
   border-collapse: separate;
   border-spacing: 0;
   font-variant-numeric: tabular-nums;
+}
+
+.hourly caption {
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 0.875rem;
 }
 
 .hourly th,
