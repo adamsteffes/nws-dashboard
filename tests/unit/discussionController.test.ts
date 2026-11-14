@@ -257,6 +257,18 @@ describe("createDiscussionController", () => {
     expect(controller.viewProps().product.status).toBe("ok");
   });
 
+  it("does not load for store changes while closed", async () => {
+    const { controller, store, location, count } = setup();
+    await controller.open(location.id);
+    controller.close();
+    const old = store.get(location.id);
+    if (!old?.nws) throw new Error("setup has meta");
+    store.replaceAll([{ ...old, nws: { ...old.nws, cwa: "MFL" } }]);
+    await Promise.resolve();
+    expect(count(LIST_URL)).toBe(1);
+    expect(controller.refreshing).toBe(false);
+  });
+
   it("remembers the sections toggle and notifies", () => {
     const { controller, onChange } = setup();
     expect(controller.viewProps().sections).toBe(false);

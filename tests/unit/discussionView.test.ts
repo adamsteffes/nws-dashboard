@@ -41,6 +41,7 @@ const props = (
   list: { status: "ok", data: refs, fetchedAt: NOW.toISOString() },
   product: { status: "ok", data: product, fetchedAt: NOW.toISOString() },
   sections: false,
+  now: NOW,
   ...over,
 });
 

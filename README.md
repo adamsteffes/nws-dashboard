@@ -8,6 +8,8 @@ Live: https://adamsteffes.github.io/nws-dashboard/
 
 Open the live URL in Safari, tap **Share**, then **Add to Home Screen**. The Home Screen app keeps its own saved locations, separate from Safari — Export and Import on the Locations page move them between the two.
 
+Tap a location on the dashboard for its page: alerts, current conditions, radar, the 7-day forecast and the next 48 hours. **Forecast discussion** on that page opens the latest Area Forecast Discussion from the local office in a readable, wrapping text view. Use **Sections** for a tappable table of contents, and the previous-discussions list to read earlier issuances.
+
 ## Development
 
 Requires Node 24 (see `.nvmrc`; Node 22.12+ works).
@@ -42,6 +44,9 @@ In the repository, go to Settings → Pages → Build and deployment → Source 
 - [x] Step 13: installable PWA — manifest, icons, service worker, update prompt, install hint
 - [x] Step 14: Locations screen — add, rename, delete, re-resolve, export/import
 - [x] Step 15: dashboard weather cards — alerts, conditions, forecast and radar per location, each loading independently
+- [x] Step 16: location page — alerts, current conditions, radar, 7-day and 48-hour forecasts
+- [x] Step 17: location page refresh, offline notes and per-panel errors
+- [x] Step 18: forecast discussion page — latest and previous discussions, optional sections view
 
 ## Test data
 

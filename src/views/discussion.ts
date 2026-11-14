@@ -3,7 +3,13 @@ import type { DiscussionViewProps } from "../app/discussionController";
 import { type AfdSection, type ProductRef, splitSections } from "../nws/afd";
 import { routeHref } from "../router";
 import type { Panel } from "../services/panels";
-import { deviceZone, formatLocalWithZone } from "../util/time";
+import {
+  deviceZone,
+  errorNote,
+  loadingNote,
+  localTime,
+  staleNote,
+} from "./shared";
 
 export type DiscussionViewHandlers = {
   onSections: (on: boolean) => void;
@@ -11,7 +17,7 @@ export type DiscussionViewHandlers = {
 
 /** Date and local time in the location's zone; the zone name keeps it unambiguous. */
 const localIssued = (iso: string, zone: string): string =>
-  formatLocalWithZone(iso, zone, "dateTime", { alwaysZone: true });
+  localTime(iso, zone, "dateTime", { alwaysZone: true });
 
 const sectionId = (index: number): string => `afd-section-${index}`;
 
@@ -22,19 +28,6 @@ export function jumpToSection(event: Event, id: string): void {
   if (!target) return;
   target.scrollIntoView({ block: "start" });
   target.querySelector<HTMLElement>("h3")?.focus({ preventScroll: true });
-}
-
-function loadingNote(label: string): TemplateResult {
-  return html`<p class="panel-note muted">${label}: Loading…</p>`;
-}
-
-function errorNote(label: string, message: string | undefined): TemplateResult {
-  return html`<p class="panel-note error">${label}: ${message ?? "Unavailable"}</p>`;
-}
-
-function staleNote(fetchedAt: string | undefined, zone: string) {
-  const when = fetchedAt ? localIssued(fetchedAt, zone) : "—";
-  return html`<p class="panel-note muted">Showing saved data${when === "—" ? nothing : html` from ${when}`}</p>`;
 }
 
 function toc(sections: AfdSection[], pageHref: string) {
@@ -71,6 +64,7 @@ function history(
   currentId: string | undefined,
   locationId: string,
   zone: string,
+  now: Date,
 ) {
   if (list.status === "loading") return loadingNote("Previous discussions");
   if (list.status === "error") {
@@ -86,7 +80,7 @@ function history(
           ? html`<li><span class="afd-current" aria-current="true">${localIssued(ref.issuanceTime, zone)} (showing)</span></li>`
           : html`<li><a href=${routeHref({ name: "discussion", id: locationId, productId: ref.id })}>${localIssued(ref.issuanceTime, zone)}</a></li>`,
       )}</ul>
-      ${list.status === "stale" ? staleNote(list.fetchedAt, zone) : nothing}
+      ${list.status === "stale" ? staleNote(list.fetchedAt, zone, now, { alwaysZone: true }) : nothing}
     </section>
   `;
 }
@@ -137,7 +131,7 @@ export function discussionView(
     body = html`
       <p class="muted">${office ? `${office} — ` : ""}issued ${localIssued(data.issuanceTime, zone)} · for ${location.name}</p>
       ${olderThanNewest ? html`<p class="panel-note muted">The newest discussion couldn't be loaded; this is an older one.</p>` : nothing}
-      ${product.status === "stale" ? staleNote(product.fetchedAt, zone) : nothing}
+      ${product.status === "stale" ? staleNote(product.fetchedAt, zone, props.now, { alwaysZone: true }) : nothing}
       <button type="button" class="btn btn-secondary afd-toggle" aria-pressed=${sections ? "true" : "false"} @click=${() => handlers.onSections(!sections)}>Sections</button>
       ${sections ? sectionedText(data.text, pageHref) : html`<pre class="afd-text">${data.text}</pre>`}
     `;
@@ -148,7 +142,7 @@ export function discussionView(
       <a class="back-link" href=${routeHref({ name: "location", id: location.id })}>← Back to ${location.name}</a>
       <h2>Forecast discussion</h2>
       ${body}
-      ${history(list, data?.id ?? props.productId, location.id, zone)}
+      ${history(list, data?.id ?? props.productId, location.id, zone, props.now)}
     </section>
   `;
 }

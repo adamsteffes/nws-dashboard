@@ -23,11 +23,14 @@ export type DiscussionViewProps = {
   /** With status "ok" and no data, the office has published no discussion. */
   product: Panel<Product>;
   sections: boolean;
+  now: Date;
 };
 
 export type DiscussionController = {
   readonly refreshing: boolean;
   open(id: string, productId?: string): Promise<void>;
+  /** Called when leaving the page; the store no longer triggers loads until the next `open`. */
+  close(): void;
   /** Reloads what is open, bypassing the client's cache. */
   refresh(): Promise<void>;
   setSections(on: boolean): void;
@@ -75,6 +78,7 @@ export function createDiscussionController(
   let product: Panel<Product> = { status: "loading" };
   let sections = false;
   let running = 0;
+  let active = false;
   /** Latest load; an older load's result is dropped. */
   let token = 0;
 
@@ -171,7 +175,7 @@ export function createDiscussionController(
   }
 
   ctx.store.subscribe(() => {
-    if (id === undefined) return;
+    if (!active || id === undefined) return;
     const current = ctx.store.get(id);
     const key = current ? dataKey(current) : null;
     if (key === loadedKey) {
@@ -188,11 +192,15 @@ export function createDiscussionController(
       return running > 0;
     },
     open(nextId, nextProductId) {
+      active = true;
       id = nextId;
       productId = nextProductId;
       list = { status: "loading" };
       product = { status: "loading" };
       return load(false);
+    },
+    close() {
+      active = false;
     },
     refresh() {
       return id === undefined ? Promise.resolve() : load(true);
@@ -207,6 +215,7 @@ export function createDiscussionController(
         list,
         product,
         sections,
+        now: ctx.now(),
       };
       if (productId !== undefined) props.productId = productId;
       return props;
