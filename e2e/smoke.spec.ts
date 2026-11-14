@@ -8,9 +8,7 @@ async function attachScreenshot(page: Page, testInfo: TestInfo, name: string) {
   });
 }
 
-test("loads and renders the placeholder dashboard", async ({
-  page,
-}, testInfo) => {
+test("loads and renders the app shell", async ({ page }, testInfo) => {
   const consoleErrors: string[] = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -20,9 +18,10 @@ test("loads and renders the placeholder dashboard", async ({
   await page.goto("./");
 
   await expect(
-    page.getByRole("heading", { name: "NWS Weather" }),
+    page.getByRole("heading", { level: 1, name: "NWS Weather" }),
   ).toBeVisible();
   await expect(page.getByText(/Version \d+\.\d+\.\d+/)).toBeVisible();
+  await expect(page).toHaveTitle("NWS Weather");
 
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth <= window.innerWidth,
