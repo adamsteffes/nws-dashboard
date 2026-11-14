@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { parsePoint } from "../../src/nws/points";
 import { createLocationStore, metaFromPoint } from "../../src/store/locations";
 import {
@@ -222,6 +222,72 @@ describe("importLocations", () => {
     );
     expect(result.added).toBe(1);
     expect(result.warnings).toHaveLength(1);
+  });
+
+  it("throws instead of reporting success when the save fails", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const store = createLocationStore({
+      storage: createMemoryStorage({ quotaBytes: 300 }),
+    });
+    store.add({ name: "Keep", lat: 1, lon: 1 });
+    const before = store.list();
+    const big = {
+      locations: Array.from({ length: 20 }, (_, i) => ({
+        name: `N${i}`,
+        lat: 1,
+        lon: i,
+      })),
+    };
+    expect(() => importLocations(store, big, "replace")).toThrow(
+      /Couldn't save/,
+    );
+    expect(() => importLocations(store, big, "merge")).toThrow(/Couldn't save/);
+    expect(store.list()).toEqual(before);
+  });
+
+  it("regenerates unusable ids", () => {
+    const result = validateLocationsFile({
+      locations: [
+        { id: "__proto__", name: "A", lat: 1, lon: 1 },
+        { id: "../evil <b>", name: "B", lat: 1, lon: 2 },
+        { id: "z".repeat(100), name: "C", lat: 1, lon: 3 },
+      ],
+    });
+    expect(result.ok && result.file.locations.map((l) => l.id)).toEqual([
+      "a",
+      "b",
+      "c",
+    ]);
+    expect(result.ok && result.warnings).toHaveLength(3);
+  });
+
+  it("replaces invalid createdAt values", () => {
+    const result = validateLocationsFile({
+      locations: [{ name: "A", lat: 1, lon: 1, createdAt: "yesterday-ish" }],
+    });
+    expect(
+      result.ok &&
+        Number.isNaN(Date.parse(result.file.locations[0]?.createdAt ?? "")),
+    ).toBe(false);
+  });
+
+  it("rejects oversized files", () => {
+    const tooLong = `{"locations":[],"pad":"${"x".repeat(1_000_001)}"}`;
+    const many = {
+      locations: Array.from({ length: 501 }, (_, i) => ({
+        name: `N${i}`,
+        lat: 1,
+        lon: 1,
+      })),
+    };
+    for (const input of [tooLong, many]) {
+      const result = validateLocationsFile(input);
+      expect(result.ok).toBe(false);
+    }
+    const store = freshStore();
+    expect(() => importLocations(store, many, "merge")).toThrow(
+      /more than 500/,
+    );
   });
 
   it("leaves the store unchanged on a hard error", () => {

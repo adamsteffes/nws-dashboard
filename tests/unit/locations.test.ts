@@ -190,17 +190,72 @@ describe("createLocationStore", () => {
       expect(warn).toHaveBeenCalledTimes(1);
     });
 
-    it("works in memory when setItem throws, warning once", () => {
+    it("refuses and rolls back when setItem throws, warning once", () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
       const store = createLocationStore({
         storage: createMemoryStorage({ failWrites: true }),
       });
       expect(store.persistent).toBe(true);
-      store.add(home);
-      store.add({ ...home, name: "Two" });
-      expect(store.list()).toHaveLength(2);
+      expect(() => store.add(home)).toThrow(/Couldn't save/);
+      expect(() => store.add(home)).toThrow(/Couldn't save/);
+      expect(store.list()).toEqual([]);
       expect(store.persistent).toBe(false);
       expect(warn).toHaveBeenCalledTimes(1);
+    });
+
+    it("restores the previous list when a later save fails", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const storage = createMemoryStorage({ quotaBytes: 500 });
+      const store = createLocationStore({ storage });
+      const kept = store.add(home);
+      expect(() => store.add({ ...home, nws: sampleMeta() })).toThrow(
+        /Couldn't save/,
+      );
+      expect(store.list()).toEqual([kept]);
+      expect(JSON.parse(storage.data.get(KEY) ?? "").locations).toHaveLength(1);
+      expect(() => store.rename("home", "Z")).not.toThrow();
+      expect(store.persistent).toBe(true);
+    });
+
+    it("keeps working in memory when getItem throws", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const store = createLocationStore({
+        storage: createMemoryStorage({ failReads: true }),
+      });
+      expect(store.persistent).toBe(false);
+      store.add(home);
+      expect(store.list()).toHaveLength(1);
+    });
+
+    it("ignores storage events while holding unsaved in-memory changes", () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const store = createLocationStore({
+        storage: createMemoryStorage({ failReads: true }),
+      });
+      store.add(home);
+      warn.mockClear();
+      window.dispatchEvent(new StorageEvent("storage", { key: KEY }));
+      expect(store.list()).toHaveLength(1);
+      // Stores from earlier tests also listen, so only assert it warned.
+      expect(warn).toHaveBeenCalled();
+    });
+
+    it("falls back to memory when localStorage access throws", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      Object.defineProperty(globalThis, "localStorage", {
+        configurable: true,
+        get() {
+          throw new DOMException("blocked", "SecurityError");
+        },
+      });
+      try {
+        const store = createLocationStore();
+        store.add(home);
+        expect(store.persistent).toBe(false);
+        expect(store.list()).toHaveLength(1);
+      } finally {
+        Reflect.deleteProperty(globalThis, "localStorage");
+      }
     });
 
     it("is persistent with healthy storage and silent", () => {
@@ -219,7 +274,7 @@ describe("createLocationStore", () => {
       const store = createLocationStore({ storage, clock: () => T });
       expect(store.corrupt).toBe(true);
       expect(store.list()).toEqual([]);
-      expect(storage.data.get(`${KEY}.corrupt-${T}`)).toBe("{not json");
+      expect(storage.data.get(`${KEY}.corrupt`)).toBe("{not json");
       // The original is untouched until the user actually changes something.
       expect(storage.data.get(KEY)).toBe("{not json");
     });
@@ -230,7 +285,100 @@ describe("createLocationStore", () => {
       storage.data.set(KEY, raw);
       const store = createLocationStore({ storage, clock: () => T });
       expect(store.corrupt).toBe(true);
-      expect(storage.data.get(`${KEY}.corrupt-${T}`)).toBe(raw);
+      expect(storage.data.get(`${KEY}.corrupt`)).toBe(raw);
+    });
+
+    it("does not re-copy unreadable data on every load", () => {
+      const storage = createMemoryStorage();
+      storage.data.set(KEY, "{bad");
+      for (let i = 0; i < 4; i++) createLocationStore({ storage });
+      expect([...storage.data.keys()].sort()).toEqual([KEY, `${KEY}.corrupt`]);
+    });
+
+    it("uses numbered backup slots for different bad data, then pauses", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const storage = createMemoryStorage();
+      for (const raw of ["{a", "{b", "{c"]) {
+        storage.data.set(KEY, raw);
+        createLocationStore({ storage });
+      }
+      expect(storage.data.get(`${KEY}.corrupt`)).toBe("{a");
+      expect(storage.data.get(`${KEY}.corrupt-2`)).toBe("{b");
+      expect(storage.data.get(`${KEY}.corrupt-3`)).toBe("{c");
+      storage.data.set(KEY, "{d");
+      const store = createLocationStore({ storage });
+      expect(store.readOnly).toBe(true);
+    });
+
+    it("never overwrites unreadable data when the backup fails", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const raw = `{"version":1,"locations":[${"x".repeat(3000)}`;
+      const storage = createMemoryStorage({ quotaBytes: 5000 });
+      storage.data.set(KEY, raw);
+      const store = createLocationStore({ storage });
+      expect(store.corrupt).toBe(true);
+      expect(store.readOnly).toBe(true);
+      expect(store.readOnlyReason).toMatch(/backed up/);
+      expect(() => store.add(home)).toThrow(/changes are paused/);
+      expect(storage.data.get(KEY)).toBe(raw);
+      store.discardCorrupt();
+      expect(store.readOnly).toBe(false);
+      store.add(home);
+      expect(store.list()).toHaveLength(1);
+    });
+
+    it("treats a newer version as read-only and never writes", () => {
+      const storage = createMemoryStorage();
+      const raw = JSON.stringify({
+        version: 2,
+        locations: [{ id: "a", name: "A", lat: 1, lon: 1 }],
+      });
+      storage.data.set(KEY, raw);
+      const store = createLocationStore({ storage });
+      expect(store.corrupt).toBe(false);
+      expect(store.readOnly).toBe(true);
+      expect(store.readOnlyReason).toMatch(/newer version.*reload to update/);
+      expect(store.list().map((l) => l.id)).toEqual(["a"]);
+      expect(() => store.add(home)).toThrow(/newer version/);
+      expect(() => store.remove("a")).toThrow(/newer version/);
+      store.discardCorrupt();
+      expect(store.readOnly).toBe(true);
+      expect(storage.data.get(KEY)).toBe(raw);
+      expect([...storage.data.keys()]).toEqual([KEY]);
+    });
+
+    it("backs up a file with dropped entries before the first write", () => {
+      const storage = createMemoryStorage();
+      const raw = JSON.stringify({
+        version: 1,
+        locations: [
+          { id: "a", name: "A", lat: 1, lon: 1 },
+          { id: "b", name: "x".repeat(61), lat: 1, lon: 1 },
+        ],
+      });
+      storage.data.set(KEY, raw);
+      const store = createLocationStore({ storage });
+      expect(store.dropped).toBe(1);
+      store.rename("a", "AA");
+      expect(storage.data.get(`${KEY}.corrupt`)).toBe(raw);
+      expect(storage.data.get(KEY)).not.toContain('"b"');
+    });
+
+    it("pauses changes when the dropped-entries backup fails", () => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      const raw = JSON.stringify({
+        version: 1,
+        locations: [
+          { id: "a", name: "A", lat: 1, lon: 1 },
+          { id: "b", name: "", lat: 1, lon: 1 },
+        ],
+      });
+      const storage = createMemoryStorage({ quotaBytes: raw.length + 40 });
+      storage.data.set(KEY, raw);
+      const store = createLocationStore({ storage });
+      expect(store.readOnly).toBe(true);
+      expect(() => store.rename("a", "AA")).toThrow(/backed up/);
+      expect(storage.data.get(KEY)).toBe(raw);
     });
 
     it("keeps valid entries from a partially invalid file", () => {
@@ -266,6 +414,66 @@ describe("createLocationStore", () => {
       off();
       store.add(home);
       expect(fn).toHaveBeenCalledTimes(4);
+    });
+
+    it("isolates throwing listeners from the caller and other listeners", () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      const store = createLocationStore({ storage: createMemoryStorage() });
+      const second = vi.fn();
+      store.subscribe(() => {
+        throw new Error("render bug");
+      });
+      store.subscribe(second);
+      expect(() => store.add(home)).not.toThrow();
+      expect(store.list()).toHaveLength(1);
+      expect(second).toHaveBeenCalledTimes(1);
+      expect(error).toHaveBeenCalledTimes(1);
+    });
+
+    it("skips listeners unsubscribed during a notification", () => {
+      const store = createLocationStore({ storage: createMemoryStorage() });
+      const later = vi.fn();
+      let off = () => {};
+      store.subscribe(() => off());
+      off = store.subscribe(later);
+      store.add(home);
+      expect(later).not.toHaveBeenCalled();
+    });
+
+    it("lets a listener change the store without losing either change", () => {
+      const store = createLocationStore({ storage: createMemoryStorage() });
+      store.subscribe(() => {
+        if (store.list().length === 1) {
+          store.add({ name: "Auto", lat: 2, lon: 2 });
+        }
+      });
+      store.add(home);
+      expect(store.list().map((l) => l.id)).toEqual(["home", "auto"]);
+    });
+
+    it("applies changes on top of another tab's write", () => {
+      const storage = createMemoryStorage();
+      const a = createLocationStore({ storage });
+      const b = createLocationStore({ storage });
+      a.add({ name: "FromA", lat: 1, lon: 1 });
+      b.add({ name: "FromB", lat: 2, lon: 2 });
+      expect(b.list().map((l) => l.name)).toEqual(["FromA", "FromB"]);
+      const saved = JSON.parse(storage.data.get(KEY) ?? "");
+      expect(saved.locations.map((l: { name: string }) => l.name)).toEqual([
+        "FromA",
+        "FromB",
+      ]);
+    });
+
+    it("returns copies that cannot alter the store", () => {
+      const store = createLocationStore({ storage: createMemoryStorage() });
+      const meta = sampleMeta();
+      store.add({ ...home, nws: meta });
+      meta.gridId = "MUTATED";
+      const got = store.get("home");
+      got?.nws?.stationIds.push("X");
+      expect(store.get("home")?.nws?.gridId).not.toBe("MUTATED");
+      expect(store.get("home")?.nws?.stationIds).toEqual(["KCNK", "KMYZ"]);
     });
 
     it("does not notify for a remove that changes nothing", () => {

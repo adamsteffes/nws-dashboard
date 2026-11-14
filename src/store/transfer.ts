@@ -19,6 +19,8 @@ export type ImportResult = {
   warnings: string[];
 };
 
+const MAX_FILE_CHARS = 1_000_000;
+const MAX_LOCATIONS = 500;
 const PREFIX = "That file isn't a locations backup: ";
 
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -38,11 +40,24 @@ export function exportLocations(
 export function validateLocationsFile(input: unknown): ValidationResult {
   let raw = input;
   if (typeof input === "string") {
+    if (input.length > MAX_FILE_CHARS) {
+      return {
+        ok: false,
+        error: `${PREFIX}it is larger than 1 MB.`,
+      };
+    }
     try {
       raw = JSON.parse(input);
     } catch {
       return { ok: false, error: `${PREFIX}it isn't valid JSON.` };
     }
+  }
+  const list = (raw as { locations?: unknown } | null)?.locations;
+  if (Array.isArray(list) && list.length > MAX_LOCATIONS) {
+    return {
+      ok: false,
+      error: `${PREFIX}it has more than ${MAX_LOCATIONS} locations.`,
+    };
   }
   const parsed = parseLocationsFile(raw, new Date().toISOString());
   if (!parsed.ok) return { ok: false, error: `${PREFIX}${parsed.reason}` };

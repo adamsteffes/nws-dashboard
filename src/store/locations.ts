@@ -60,11 +60,21 @@ export type LocationStore = {
   readonly dropped: number;
   /** False when changes only live in memory (no or failing storage). */
   readonly persistent: boolean;
+  /** Changes are refused; see readOnlyReason for why. */
+  readonly readOnly: boolean;
+  readonly readOnlyReason: string | null;
+  /**
+   * Gives up on unreadable data whose backup couldn't be saved, so the store
+   * accepts changes again (the next change overwrites it).
+   */
+  discardCorrupt(): void;
 };
 
 export const DEFAULT_KEY = "nwsdash:locations:v1";
 const MAX_NAME = 60;
 const MAX_SLUG = 40;
+/** Ids end up in URLs and DOM attributes, so keep them boring. */
+const ID_PATTERN = /^[a-z0-9-]{1,45}$/;
 
 export function metaFromPoint(
   point: PointInfo,
@@ -196,7 +206,12 @@ export type ParsedLocations =
       /** Entries dropped entirely (a dropped nws block does not count). */
       dropped: number;
     }
-  | { ok: false; reason: string };
+  | {
+      ok: false;
+      reason: string;
+      /** Set when the file declares a version newer than this app knows. */
+      newerVersion?: number;
+    };
 
 /**
  * Lenient parse shared by the store and file import. Hard failures are only
@@ -215,6 +230,7 @@ export function parseLocationsFile(
       return {
         ok: false,
         reason: `it uses format version ${raw.version}, but this app only understands version 1. Update the app and try again.`,
+        newerVersion: raw.version,
       };
     }
     if (raw.version < 1) {
@@ -245,11 +261,15 @@ export function parseLocationsFile(
       continue;
     }
     const name = (entry.name as string).trim();
-    const baseId = isStr(entry.id) ? entry.id : slugify(name);
+    const givenId = entry.id;
+    const validId = typeof givenId === "string" && ID_PATTERN.test(givenId);
+    const baseId = validId ? givenId : slugify(name);
     const id = uniqueId(baseId, taken);
-    if (id !== baseId && isStr(entry.id)) {
+    if (givenId !== undefined && id !== givenId) {
       warnings.push(
-        `Entry at index ${index}: id "${baseId}" was already used, so it became "${id}".`,
+        validId
+          ? `Entry at index ${index}: id "${givenId}" was already used, so it became "${id}".`
+          : `Entry at index ${index} ("${name}"): its id wasn't usable, so it became "${id}".`,
       );
     }
     taken.add(id);
@@ -258,7 +278,10 @@ export function parseLocationsFile(
       name,
       lat: roundCoord(entry.lat as number),
       lon: roundCoord(entry.lon as number),
-      createdAt: isStr(entry.createdAt) ? entry.createdAt : nowIso,
+      createdAt:
+        isStr(entry.createdAt) && !Number.isNaN(Date.parse(entry.createdAt))
+          ? entry.createdAt
+          : nowIso,
     };
     if (entry.nws !== undefined) {
       const nws = parseNwsMeta(entry.nws);
@@ -284,6 +307,22 @@ function defaultStorage(): StorageLike | undefined {
   }
 }
 
+const SAVE_FAILED =
+  "Couldn't save — storage is full or unavailable. Your change was not kept.";
+const BACKUP_FAILED =
+  "Your saved locations couldn't be backed up, so changes are paused to avoid losing them. Free up browser storage and reload, or discard the unreadable data.";
+const NEWER_VERSION =
+  "Your saved locations were saved by a newer version of this app, so changes are paused — reload to update.";
+const MAX_BACKUPS = 3;
+
+const copyLocation = (l: SavedLocation): SavedLocation => {
+  const copy = { ...l };
+  if (l.nws !== undefined) {
+    copy.nws = { ...l.nws, stationIds: [...l.nws.stationIds] };
+  }
+  return copy;
+};
+
 export function createLocationStore(
   options: LocationStoreOptions = {},
 ): LocationStore {
@@ -295,7 +334,13 @@ export function createLocationStore(
   let locations: SavedLocation[] = [];
   let corrupt = false;
   let dropped = 0;
-  let persistent = storage !== undefined;
+  // In-memory mode: storage is missing or unreadable from the start, so
+  // changes are kept in memory only and never reported as failures.
+  let memoryOnly = storage === undefined;
+  let persistent = !memoryOnly;
+  let readOnlyKind: "backup" | "newer" | null = null;
+  // The raw string last read from or written to `key`, to spot other tabs.
+  let lastRaw: string | null = null;
   let warned = false;
   const listeners = new Set<() => void>();
 
@@ -305,76 +350,168 @@ export function createLocationStore(
     console.warn(`Saved locations won't persist: ${why}`, error ?? "");
   };
 
-  if (storage === undefined) warnOnce("storage is unavailable.");
+  if (memoryOnly) warnOnce("storage is unavailable.");
 
-  function quarantine(raw: string) {
+  /**
+   * Keeps a copy of data we are about to stop treating as authoritative.
+   * Uses `${key}.corrupt`, then `-2` and `-3` when an earlier, different copy
+   * is already there. Returns false if no copy could be guaranteed.
+   */
+  function backup(raw: string): boolean {
+    if (storage === undefined) return false;
     try {
-      storage?.setItem(`${key}.corrupt-${clock()}`, raw);
+      for (let n = 1; n <= MAX_BACKUPS; n++) {
+        const slot = n === 1 ? `${key}.corrupt` : `${key}.corrupt-${n}`;
+        const existing = storage.getItem(slot);
+        if (existing === raw) return true;
+        if (existing === null) {
+          storage.setItem(slot, raw);
+          return true;
+        }
+      }
     } catch (error) {
-      warnOnce("couldn't keep a copy of unreadable data.", error);
+      console.warn("Couldn't back up unreadable saved locations", error);
     }
+    return false;
   }
 
   function load() {
     corrupt = false;
     dropped = 0;
     locations = [];
+    readOnlyKind = null;
     if (storage === undefined) return;
     let raw: string | null;
     try {
       raw = storage.getItem(key);
     } catch (error) {
+      memoryOnly = true;
       persistent = false;
       warnOnce("reading storage failed.", error);
       return;
     }
+    lastRaw = raw;
     if (raw === null) return;
+
+    let json: unknown;
     let parsed: ParsedLocations;
     try {
-      parsed = parseLocationsFile(JSON.parse(raw), nowIso());
+      json = JSON.parse(raw);
+      parsed = parseLocationsFile(json, nowIso());
     } catch {
       parsed = { ok: false, reason: "invalid JSON" };
     }
+
+    if (!parsed.ok && parsed.newerVersion !== undefined) {
+      // Never touch data from a newer app; show what we can understand.
+      readOnlyKind = "newer";
+      const lenient = parseLocationsFile(
+        { ...(json as object), version: 1 },
+        nowIso(),
+      );
+      if (lenient.ok) locations = lenient.locations;
+      return;
+    }
     if (!parsed.ok) {
-      // Keep the original so a later write can't destroy recoverable data.
-      quarantine(raw);
       corrupt = true;
+      if (!backup(raw)) readOnlyKind = "backup";
       return;
     }
     locations = parsed.locations;
     dropped = parsed.dropped;
+    // The next write would silently erase the entries we dropped.
+    if (dropped > 0 && !backup(raw)) readOnlyKind = "backup";
   }
 
-  function persist() {
-    if (storage === undefined) return;
-    const file: LocationsFile = { version: 1, locations };
-    try {
-      storage.setItem(key, JSON.stringify(file));
-      persistent = true;
-    } catch (error) {
-      persistent = false;
-      warnOnce("writing to storage failed (full or private mode?).", error);
+  const readOnlyReason = (): string | null =>
+    readOnlyKind === "newer"
+      ? NEWER_VERSION
+      : readOnlyKind === "backup"
+        ? BACKUP_FAILED
+        : null;
+
+  /**
+   * Listeners run synchronously in subscription order, each isolated from the
+   * others' errors. They should read the store's current state rather than
+   * rely on call order: a listener that changes the store triggers a nested
+   * notify, so later listeners may see newer state and be called again.
+   */
+  function notify() {
+    for (const fn of [...listeners]) {
+      if (!listeners.has(fn)) continue;
+      try {
+        fn();
+      } catch (error) {
+        console.error("Location store listener failed", error);
+      }
     }
   }
 
-  const notify = () => {
-    for (const fn of [...listeners]) fn();
+  /** Adopts data written by another tab. Returns whether anything changed. */
+  function refresh(): boolean {
+    if (storage === undefined || memoryOnly) return false;
+    let raw: string | null;
+    try {
+      raw = storage.getItem(key);
+    } catch {
+      return false;
+    }
+    if (raw === lastRaw) return false;
+    load();
+    return true;
+  }
+
+  function persist(): boolean {
+    if (memoryOnly || storage === undefined) return true;
+    const file: LocationsFile = { version: 1, locations };
+    const raw = JSON.stringify(file);
+    try {
+      storage.setItem(key, raw);
+      lastRaw = raw;
+      persistent = true;
+      return true;
+    } catch (error) {
+      persistent = false;
+      warnOnce("writing to storage failed (full or private mode?).", error);
+      return false;
+    }
+  }
+
+  const assertWritable = () => {
+    const reason = readOnlyReason();
+    if (reason !== null) throw new Error(reason);
   };
 
-  const commit = (next: SavedLocation[]) => {
-    locations = next;
-    persist();
+  /**
+   * Applies a change to the freshest data and saves it. If saving fails the
+   * previous list is restored so memory never disagrees with storage.
+   */
+  function mutate(change: (current: SavedLocation[]) => SavedLocation[]) {
+    assertWritable();
+    if (refresh()) {
+      notify();
+      assertWritable();
+    }
+    const previous = locations;
+    locations = change(previous);
+    if (!persist()) {
+      locations = previous;
+      throw new Error(SAVE_FAILED);
+    }
     notify();
-  };
+  }
 
-  const find = (id: string): SavedLocation => {
-    const found = locations.find((l) => l.id === id);
+  const requireIn = (list: SavedLocation[], id: string): SavedLocation => {
+    const found = list.find((l) => l.id === id);
     if (found === undefined) throw new RangeError(`No saved location "${id}".`);
     return found;
   };
 
-  const replaceOne = (updated: SavedLocation) =>
-    commit(locations.map((l) => (l.id === updated.id ? updated : l)));
+  const cleanMeta = (nws: unknown): NwsMeta => {
+    const meta = parseNwsMeta(nws);
+    if (meta === null) throw new RangeError("The NWS data is malformed.");
+    return meta;
+  };
 
   load();
 
@@ -382,46 +519,76 @@ export function createLocationStore(
   if (typeof window !== "undefined" && storage !== undefined) {
     window.addEventListener("storage", (event) => {
       if (event.key !== null && event.key !== key) return;
-      load();
-      notify();
+      if (memoryOnly) {
+        console.warn(
+          "Ignoring a storage change from another tab to keep unsaved locations",
+        );
+        return;
+      }
+      if (refresh()) notify();
     });
   }
 
   return {
-    list: () => [...locations],
-    get: (id) => locations.find((l) => l.id === id),
+    list: () => locations.map(copyLocation),
+    get(id) {
+      const found = locations.find((l) => l.id === id);
+      return found === undefined ? undefined : copyLocation(found);
+    },
     add(input) {
       const problem = checkLocationInput(input.name, input.lat, input.lon);
       if (problem !== null) throw new RangeError(problem);
+      const nws = input.nws === undefined ? undefined : cleanMeta(input.nws);
       const name = input.name.trim();
-      const location: SavedLocation = {
-        id: uniqueId(slugify(name), new Set(locations.map((l) => l.id))),
-        name,
-        lat: roundCoord(input.lat),
-        lon: roundCoord(input.lon),
-        createdAt: nowIso(),
-      };
-      if (input.nws !== undefined) location.nws = input.nws;
-      commit([...locations, location]);
-      return location;
+      let added: SavedLocation | undefined;
+      mutate((current) => {
+        const location: SavedLocation = {
+          id: uniqueId(slugify(name), new Set(current.map((l) => l.id))),
+          name,
+          lat: roundCoord(input.lat),
+          lon: roundCoord(input.lon),
+          createdAt: nowIso(),
+        };
+        if (nws !== undefined) location.nws = nws;
+        added = location;
+        return [...current, location];
+      });
+      return copyLocation(added as SavedLocation);
     },
     rename(id, name) {
-      const existing = find(id);
+      const existing = requireIn(locations, id);
       const problem = checkLocationInput(name, existing.lat, existing.lon);
       if (problem !== null) throw new RangeError(problem);
-      const updated = { ...existing, name: name.trim() };
-      replaceOne(updated);
-      return updated;
+      let updated: SavedLocation | undefined;
+      mutate((current) => {
+        const target = requireIn(current, id);
+        updated = { ...target, name: name.trim() };
+        return current.map((l) =>
+          l.id === id ? (updated as SavedLocation) : l,
+        );
+      });
+      return copyLocation(updated as SavedLocation);
     },
     remove(id) {
       if (!locations.some((l) => l.id === id)) return false;
-      commit(locations.filter((l) => l.id !== id));
-      return true;
+      let removed = false;
+      mutate((current) => {
+        removed = current.some((l) => l.id === id);
+        return current.filter((l) => l.id !== id);
+      });
+      return removed;
     },
     updateMeta(id, nws) {
-      const updated = { ...find(id), nws };
-      replaceOne(updated);
-      return updated;
+      const meta = cleanMeta(nws);
+      let updated: SavedLocation | undefined;
+      mutate((current) => {
+        const target = requireIn(current, id);
+        updated = { ...target, nws: meta };
+        return current.map((l) =>
+          l.id === id ? (updated as SavedLocation) : l,
+        );
+      });
+      return copyLocation(updated as SavedLocation);
     },
     replaceAll(next) {
       const parsed = parseLocationsFile({ locations: next }, nowIso());
@@ -429,13 +596,21 @@ export function createLocationStore(
       if (parsed.dropped > 0) {
         throw new RangeError(parsed.warnings.join(" "));
       }
-      commit(parsed.locations);
+      mutate(() => parsed.locations);
     },
     subscribe(fn) {
       listeners.add(fn);
       return () => {
         listeners.delete(fn);
       };
+    },
+    discardCorrupt() {
+      if (readOnlyKind !== "backup") return;
+      readOnlyKind = null;
+      corrupt = false;
+      dropped = 0;
+      locations = [];
+      notify();
     },
     get corrupt() {
       return corrupt;
@@ -445,6 +620,12 @@ export function createLocationStore(
     },
     get persistent() {
       return persistent;
+    },
+    get readOnly() {
+      return readOnlyKind !== null;
+    },
+    get readOnlyReason() {
+      return readOnlyReason();
     },
   };
 }
