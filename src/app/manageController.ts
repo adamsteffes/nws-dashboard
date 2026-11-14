@@ -14,6 +14,7 @@ import {
   validateLocationsFile,
 } from "../store/transfer";
 import type { AppContext } from "./context";
+import { parseCoord } from "./coords";
 
 export type Message = { kind: "info" | "error"; text: string };
 
@@ -27,6 +28,8 @@ export type ManageState = {
     busy: boolean;
     locating: boolean;
     message: Message | null;
+    /** The field the validation error belongs to, so the view can mark it. */
+    errorField: "name" | "lat" | "lon" | null;
     /** Set after a Weather Service failure that saving without data works around. */
     offerSaveWithout: boolean;
   };
@@ -51,6 +54,7 @@ export type ManageState = {
     error: string | null;
   };
   confirmDiscard: boolean;
+  confirmClear: boolean;
   storageMessage: Message | null;
 };
 
@@ -86,7 +90,9 @@ export type ManageActions = {
   confirmReplace(): void;
   cancelReplace(): void;
   downloadBackup(key: string): void;
+  askClearBackups(): void;
   clearBackups(): void;
+  cancelClearBackups(): void;
   askDiscard(): void;
   confirmDiscard(): void;
   cancelDiscard(): void;
@@ -105,6 +111,13 @@ export type ManageController = {
   state: ManageState;
   actions: ManageActions;
   viewProps(): ManageViewProps;
+  /** Clears pending confirms, shown backups and messages; call when the page is entered. */
+  reset(): void;
+  /**
+   * Moves keyboard focus to the element requested by the last action, if any.
+   * Call after each render: template swaps otherwise drop focus to the body.
+   */
+  applyFocus(root?: ParentNode): void;
 };
 
 export type ManageControllerOptions = {
@@ -124,11 +137,14 @@ const info = (text: string): Message => ({ kind: "info", text });
 const errorText = (e: unknown): string =>
   e instanceof Error ? e.message : String(e);
 
-/** Lenient number parsing for typed coordinates; blank is not zero. */
-function parseCoord(text: string): number {
-  const trimmed = text.trim().replace(",", ".");
-  return trimmed === "" ? Number.NaN : Number(trimmed);
-}
+const MAX_IMPORT_CHARS = 1_000_000;
+const REMOVED = "That location was removed.";
+
+/** The store throws a RangeError "No saved location …" when an id vanished. */
+const storeErrorText = (e: unknown): string =>
+  e instanceof RangeError && e.message.startsWith("No saved location")
+    ? REMOVED
+    : errorText(e);
 
 function describeNwsFailure(
   e: unknown,
@@ -188,7 +204,7 @@ export function createManageController(
   const changed = options.onChange;
   const reload = options.reload ?? (() => window.location.reload());
 
-  const state: ManageState = {
+  const initialState = (): ManageState => ({
     add: {
       name: "",
       lat: "",
@@ -196,6 +212,7 @@ export function createManageController(
       busy: false,
       locating: false,
       message: null,
+      errorField: null,
       offerSaveWithout: false,
     },
     list: {
@@ -215,25 +232,66 @@ export function createManageController(
       error: null,
     },
     confirmDiscard: false,
+    confirmClear: false,
     storageMessage: null,
+  });
+  const state = initialState();
+
+  // The input of the add attempt in flight or that last failed. "Save without
+  // weather data" must save this, not whatever the fields hold by then.
+  type AddInput = {
+    name: string;
+    lat: number;
+    lon: number;
+    text: { name: string; lat: string; lon: string };
+  };
+  let attempt: AddInput | null = null;
+  let pendingFocus: string | null = null;
+  const focusOn = (selector: string) => {
+    pendingFocus = selector;
   };
 
-  const readAddForm = () => ({
+  const readAddForm = (): AddInput => ({
     name: state.add.name,
-    lat: parseCoord(state.add.lat),
-    lon: parseCoord(state.add.lon),
+    lat: parseCoord(state.add.lat, "lat"),
+    lon: parseCoord(state.add.lon, "lon"),
+    text: { name: state.add.name, lat: state.add.lat, lon: state.add.lon },
   });
 
-  function commitAdd(
-    input: { name: string; lat: number; lon: number },
-    nws?: NwsMeta,
-  ) {
+  /** Which field a checkLocationInput message is about. */
+  const fieldOf = (problem: string): "name" | "lat" | "lon" =>
+    problem.startsWith("Latitude")
+      ? "lat"
+      : problem.startsWith("Longitude")
+        ? "lon"
+        : "name";
+
+  /** Returns true when the input is acceptable; otherwise marks the field. */
+  function validateAdd(input: AddInput): boolean {
+    const a = state.add;
+    const problem = checkLocationInput(input.name, input.lat, input.lon);
+    if (problem === null) {
+      a.errorField = null;
+      return true;
+    }
+    a.message = error(problem);
+    a.errorField = fieldOf(problem);
+    focusOn(`#add-${a.errorField}`);
+    return false;
+  }
+
+  function commitAdd(input: AddInput, nws?: NwsMeta) {
     const a = state.add;
     try {
-      const saved = store.add(nws ? { ...input, nws } : input);
-      a.name = "";
-      a.lat = "";
-      a.lon = "";
+      const { name, lat, lon } = input;
+      const saved = store.add(
+        nws ? { name, lat, lon, nws } : { name, lat, lon },
+      );
+      // Leave anything the user typed since the attempt started.
+      if (a.name === input.text.name) a.name = "";
+      if (a.lat === input.text.lat) a.lat = "";
+      if (a.lon === input.text.lon) a.lon = "";
+      attempt = null;
       a.offerSaveWithout = false;
       a.message = info(
         nws
@@ -272,20 +330,23 @@ export function createManageController(
     setAddField(field, value) {
       state.add[field] = value;
       state.add.offerSaveWithout = false;
+      if (state.add.errorField === field) {
+        state.add.errorField = null;
+        state.add.message = null;
+      }
       changed();
     },
 
     async submitAdd() {
       const a = state.add;
-      if (a.busy) return;
+      if (a.busy || a.locating) return;
       const input = readAddForm();
-      const problem = checkLocationInput(input.name, input.lat, input.lon);
       a.offerSaveWithout = false;
-      if (problem !== null) {
-        a.message = error(problem);
+      if (!validateAdd(input)) {
         changed();
         return;
       }
+      attempt = input;
       a.busy = true;
       a.message = info("Looking up this location…");
       changed();
@@ -301,20 +362,15 @@ export function createManageController(
     },
 
     saveWithoutWeather() {
-      const input = readAddForm();
-      const problem = checkLocationInput(input.name, input.lat, input.lon);
-      if (problem !== null) {
-        state.add.message = error(problem);
-      } else {
-        commitAdd(input);
-      }
+      if (attempt === null || state.add.busy) return;
+      commitAdd(attempt);
       changed();
     },
 
     async useMyLocation() {
       const geolocation = ctx.geolocation;
       const a = state.add;
-      if (!geolocation || a.locating) return;
+      if (!geolocation || a.locating || a.busy) return;
       a.locating = true;
       a.message = info("Finding your location…");
       changed();
@@ -325,6 +381,7 @@ export function createManageController(
             a.lon = String(roundCoord(position.coords.longitude));
             if (a.name.trim() === "") a.name = "My location";
             a.offerSaveWithout = false;
+            a.errorField = null;
             a.message = info("Location found. Check the name, then add it.");
             resolve();
           },
@@ -344,13 +401,14 @@ export function createManageController(
 
     startRename(id) {
       const found = store.get(id);
-      if (!found) return;
+      if (!found || state.list.busyId === id) return;
       Object.assign(state.list, {
         renamingId: id,
         renameValue: found.name,
         renameError: null,
         deletingId: null,
       });
+      focusOn(`#rename-${id}`);
       changed();
     },
     setRenameValue(value) {
@@ -359,26 +417,33 @@ export function createManageController(
     },
     submitRename() {
       const l = state.list;
-      if (l.renamingId === null) return;
+      const id = l.renamingId;
+      if (id === null) return;
       try {
-        const renamed = store.rename(l.renamingId, l.renameValue);
+        const renamed = store.rename(id, l.renameValue);
         l.renamingId = null;
         l.renameError = null;
         l.message = info(`Renamed to ${renamed.name}.`);
+        focusOn(`[data-focus="rename-${id}"]`);
       } catch (e) {
-        l.renameError = errorText(e);
+        l.renameError = storeErrorText(e);
+        focusOn(`#rename-${id}`);
       }
       changed();
     },
     cancelRename() {
+      const id = state.list.renamingId;
       state.list.renamingId = null;
       state.list.renameError = null;
+      if (id !== null) focusOn(`[data-focus="rename-${id}"]`);
       changed();
     },
 
     askDelete(id) {
+      if (state.list.busyId === id) return;
       state.list.deletingId = id;
       state.list.renamingId = null;
+      focusOn('[data-focus="delete-cancel"]');
       changed();
     },
     confirmDelete() {
@@ -389,13 +454,16 @@ export function createManageController(
         store.remove(l.deletingId);
         l.message = info(`Deleted ${name ?? "the location"}.`);
       } catch (e) {
-        l.message = error(errorText(e));
+        l.message = error(storeErrorText(e));
       }
       l.deletingId = null;
+      focusOn("#saved-heading");
       changed();
     },
     cancelDelete() {
+      const id = state.list.deletingId;
       state.list.deletingId = null;
+      if (id !== null) focusOn(`[data-focus="delete-${id}"]`);
       changed();
     },
 
@@ -404,16 +472,34 @@ export function createManageController(
       const found = store.get(id);
       if (!found || l.busyId !== null) return;
       l.busyId = id;
+      l.renamingId = l.renamingId === id ? null : l.renamingId;
+      l.deletingId = l.deletingId === id ? null : l.deletingId;
       l.message = info(`Looking up ${found.name}…`);
       changed();
       try {
-        store.updateMeta(id, await lookUp(found.lat, found.lon, true));
-        l.message = info(`Updated weather data for ${found.name}.`);
+        const nws = await lookUp(found.lat, found.lon, true);
+        // The list can change during the lookup (another tab, delete and
+        // re-add under the same id); never attach this result to a different place.
+        const current = store.get(id);
+        if (!current) {
+          l.message = error(REMOVED);
+        } else if (
+          current.lat !== found.lat ||
+          current.lon !== found.lon ||
+          current.createdAt !== found.createdAt
+        ) {
+          l.message = error(
+            `${current.name} changed while updating — try again.`,
+          );
+        } else {
+          store.updateMeta(id, nws);
+          l.message = info(`Updated weather data for ${current.name}.`);
+        }
       } catch (e) {
         l.message = error(
           e instanceof NwsError
             ? describeNwsFailure(e, OFFLINE_LOOKUP).text
-            : errorText(e),
+            : storeErrorText(e),
         );
       }
       l.busyId = null;
@@ -462,6 +548,12 @@ export function createManageController(
       changed();
     },
     async loadImportFile(file) {
+      if (file.size > MAX_IMPORT_CHARS) {
+        state.import.error =
+          "That file isn't a locations backup: it is larger than 1 MB.";
+        changed();
+        return;
+      }
       try {
         actions.setImportText(await file.text());
       } catch {
@@ -482,8 +574,12 @@ export function createManageController(
         i.error = "Choose a file or paste the backup text first.";
       } else if (i.mode === "replace") {
         const checked = validateLocationsFile(i.text);
-        if (checked.ok) i.confirmReplace = true;
-        else i.error = checked.error;
+        if (checked.ok) {
+          i.confirmReplace = true;
+          focusOn('[data-focus="confirm-cancel"]');
+        } else {
+          i.error = checked.error;
+        }
       } else {
         runImport();
         return;
@@ -493,6 +589,7 @@ export function createManageController(
     confirmReplace: runImport,
     cancelReplace() {
       state.import.confirmReplace = false;
+      focusOn('[data-focus="import"]');
       changed();
     },
 
@@ -514,23 +611,38 @@ export function createManageController(
       }
       changed();
     },
+    askClearBackups() {
+      state.confirmClear = true;
+      focusOn('[data-focus="confirm-cancel"]');
+      changed();
+    },
     clearBackups() {
       store.clearBackups();
+      state.confirmClear = false;
       state.storageMessage = info("Old backups cleared.");
+      focusOn("#storage-heading");
+      changed();
+    },
+    cancelClearBackups() {
+      state.confirmClear = false;
+      focusOn('[data-focus="ask-clear"]');
       changed();
     },
     askDiscard() {
       state.confirmDiscard = true;
+      focusOn('[data-focus="confirm-cancel"]');
       changed();
     },
     confirmDiscard() {
       store.discardCorrupt();
       state.confirmDiscard = false;
       state.storageMessage = info("Unreadable data discarded.");
+      focusOn("#storage-heading");
       changed();
     },
     cancelDiscard() {
       state.confirmDiscard = false;
+      focusOn('[data-focus="ask-discard"]');
       changed();
     },
     reload,
@@ -539,6 +651,32 @@ export function createManageController(
   return {
     state,
     actions,
+    reset() {
+      const { add, list, backup, import: imp } = state;
+      add.message = null;
+      add.errorField = null;
+      add.offerSaveWithout = false;
+      attempt = null;
+      list.message = null;
+      list.renamingId = null;
+      list.renameError = null;
+      list.deletingId = null;
+      backup.message = null;
+      backup.shown = null;
+      imp.confirmReplace = false;
+      imp.result = null;
+      imp.error = null;
+      state.confirmDiscard = false;
+      state.confirmClear = false;
+      state.storageMessage = null;
+      pendingFocus = null;
+    },
+    applyFocus(root = document) {
+      if (pendingFocus === null) return;
+      const selector = pendingFocus;
+      pendingFocus = null;
+      root.querySelector<HTMLElement>(selector)?.focus();
+    },
     viewProps() {
       return {
         state,

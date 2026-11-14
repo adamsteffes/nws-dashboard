@@ -143,14 +143,109 @@ describe("manageView", () => {
     expect(store.list()[0]?.name).toBe("Cabin");
   });
 
-  it("uses decimal keyboards and labelled inputs", () => {
+  it("uses a text keyboard (to allow a minus) and labelled, described inputs", () => {
     const { el } = mount();
     for (const id of ["add-lat", "add-lon"]) {
-      expect(el.querySelector(`#${id}`)?.getAttribute("inputmode")).toBe(
-        "decimal",
-      );
+      const input = el.querySelector(`#${id}`);
+      expect(input?.getAttribute("inputmode")).toBe("text");
+      expect(input?.getAttribute("autocorrect")).toBe("off");
+      expect(input?.getAttribute("autocapitalize")).toBe("off");
       expect(el.querySelector(`label[for=${id}]`)).not.toBeNull();
+      expect(input?.getAttribute("aria-describedby")).toBe(`${id}-hint`);
+      expect(el.querySelector(`#${id}-hint`)).not.toBeNull();
     }
+    expect(el.querySelector("#add-lon-hint")?.textContent).toBe(
+      "Longitude is negative west of Greenwich (e.g. -97.08 or 97.08 W).",
+    );
+  });
+
+  it("puts the validation error next to the failing field", () => {
+    const { el } = mount();
+    type(el, "#add-name", "X");
+    type(el, "#add-lat", "99");
+    type(el, "#add-lon", "-97");
+    mustButton(el, "Add location").click();
+    const lat = el.querySelector("#add-lat");
+    expect(lat?.getAttribute("aria-invalid")).toBe("true");
+    expect(lat?.getAttribute("aria-describedby")).toBe(
+      "add-lat-hint add-lat-error",
+    );
+    expect(el.querySelector("#add-lat-error")?.textContent).toBe(
+      "Latitude must be between -90 and 90.",
+    );
+    expect(
+      el.querySelector("#add-lon")?.getAttribute("aria-invalid"),
+    ).toBeNull();
+    expect(el.querySelector("[role=status]")?.textContent).toBeDefined();
+  });
+
+  it("disables the fields and Use my location while adding", () => {
+    const { el, ctrl } = mount({
+      geolocation: { getCurrentPosition: () => {} },
+    });
+    ctrl.state.add.busy = true;
+    ctrl.actions.setAddField("name", "x");
+    for (const id of ["add-name", "add-lat", "add-lon"]) {
+      expect(el.querySelector<HTMLInputElement>(`#${id}`)?.disabled).toBe(true);
+    }
+    expect(mustButton(el, "Use my location").disabled).toBe(true);
+  });
+
+  it("marks the re-resolve button busy and locks the row", () => {
+    const { el, store, ctrl } = mount();
+    store.add({ name: "Home", lat: 39, lon: -97 });
+    ctrl.state.list.busyId = "home";
+    ctrl.actions.setRenameValue("");
+    const busy = el.querySelector("[aria-busy=true]");
+    expect(busy?.getAttribute("aria-label")).toBe("Re-resolving Home");
+    expect(
+      (el.querySelector("[aria-label='Rename Home']") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (el.querySelector("[aria-label='Delete Home']") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
+  it("marks the import textarea invalid with its error", () => {
+    const { el } = mount();
+    type(el, "#import-text", "nope");
+    mustButton(el, "Import").click();
+    const area = el.querySelector("#import-text");
+    expect(area?.getAttribute("aria-invalid")).toBe("true");
+    expect(area?.getAttribute("aria-describedby")).toBe("import-error");
+    expect(el.querySelector("#import-error")).not.toBeNull();
+  });
+
+  it("marks the rename input invalid with its error", () => {
+    const { el, store } = mount();
+    store.add({ name: "Home", lat: 39, lon: -97 });
+    mustButton(el, "Rename").click();
+    type(el, "#rename-home", " ");
+    mustButton(el, "Save").click();
+    const input = el.querySelector("#rename-home");
+    expect(input?.getAttribute("aria-invalid")).toBe("true");
+    expect(input?.getAttribute("aria-describedby")).toBe("rename-home-error");
+  });
+
+  it("moves focus to the rename input, delete Cancel, and back", () => {
+    const { el, store, ctrl } = mount();
+    store.add({ name: "Home", lat: 39, lon: -97 });
+    mustButton(el, "Rename").click();
+    ctrl.applyFocus(el);
+    expect(document.activeElement?.id).toBe("rename-home");
+    mustButton(el, "Cancel").click();
+    ctrl.applyFocus(el);
+    expect(document.activeElement?.getAttribute("data-focus")).toBe(
+      "rename-home",
+    );
+    mustButton(el, "Delete").click();
+    ctrl.applyFocus(el);
+    expect(document.activeElement?.textContent).toBe("Cancel");
+    mustButton(el, "Yes").click();
+    ctrl.applyFocus(el);
+    expect(document.activeElement?.id).toBe("saved-heading");
   });
 
   it("hides Use my location without geolocation", () => {
@@ -268,6 +363,17 @@ describe("storage status in the view", () => {
       buttons(el).filter((b) => b.textContent?.startsWith("Download backup")),
     ).toHaveLength(3);
     mustButton(el, "Clear old backups").click();
+    expect(store.readOnly).toBe(true);
+    expect(
+      el.querySelector("[aria-label='Confirm clear backups']")?.textContent,
+    ).toContain(
+      "Delete 3 old backups? Download them first if you might need them.",
+    );
+    mustButton(el, "Cancel").click();
+    expect(store.readOnly).toBe(true);
+    expect(el.querySelector("[aria-label='Confirm clear backups']")).toBeNull();
+    mustButton(el, "Clear old backups").click();
+    mustButton(el, "Yes").click();
     expect(store.readOnly).toBe(false);
     expect(button(el, "Clear old backups")).toBeUndefined();
     expect(mustButton(el, "Add location").disabled).toBe(false);

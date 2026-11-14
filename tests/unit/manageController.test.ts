@@ -535,6 +535,7 @@ describe("storage problems", () => {
     const { ctrl, store } = unreadable("backups-full");
     expect(store.readOnlyKind).toBe("backups-full");
     expect(ctrl.viewProps().storage.backups).toHaveLength(3);
+    ctrl.actions.askClearBackups();
     ctrl.actions.clearBackups();
     expect(store.readOnly).toBe(false);
     expect(ctrl.viewProps().storage.backups).toHaveLength(1);
