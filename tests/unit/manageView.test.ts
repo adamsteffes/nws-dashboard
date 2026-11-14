@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAppContext, type GeolocationLike } from "../../src/app/context";
 import { createManageController } from "../../src/app/manageController";
 import { createNwsClient } from "../../src/nws/client";
+import { loadingSummary } from "../../src/services/panels";
 import { createLocationStore, DEFAULT_KEY } from "../../src/store/locations";
 import { dashboardView } from "../../src/views/dashboard";
 import { locationView } from "../../src/views/location";
@@ -303,7 +304,7 @@ describe("storage status in the view", () => {
 describe("dashboard and location views", () => {
   it("keeps the empty state for an empty store", () => {
     const el = document.createElement("div");
-    render(dashboardView([]), el);
+    render(dashboardView({ items: [], now: new Date() }), el);
     expect(el.textContent).toContain("No locations yet");
   });
 
@@ -311,7 +312,16 @@ describe("dashboard and location views", () => {
     const store = createLocationStore({ storage: createMemoryStorage() });
     const saved = store.add({ name: EVIL, lat: 39, lon: -97 });
     const el = document.createElement("div");
-    render(dashboardView(store.list()), el);
+    render(
+      dashboardView({
+        items: store.list().map((location) => ({
+          location,
+          summary: loadingSummary(),
+        })),
+        now: new Date(),
+      }),
+      el,
+    );
     expect(el.querySelector("img")).toBeNull();
     const link = el.querySelector("a");
     expect(link?.textContent).toBe(EVIL);

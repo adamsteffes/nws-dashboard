@@ -41,6 +41,7 @@ In the repository, go to Settings → Pages → Build and deployment → Source 
 - [x] Step 12: app shell — hash router, layout, base styles
 - [x] Step 13: installable PWA — manifest, icons, service worker, update prompt, install hint
 - [x] Step 14: Locations screen — add, rename, delete, re-resolve, export/import
+- [x] Step 15: dashboard weather cards — alerts, conditions, forecast and radar per location, each loading independently
 
 ## Test data
 

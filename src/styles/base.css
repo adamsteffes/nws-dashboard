@@ -446,6 +446,119 @@ textarea {
   padding-left: 1.25rem;
 }
 
+/* Dashboard weather cards */
+.wx-card {
+  position: relative;
+  gap: 10px;
+}
+
+.wx-head h2 {
+  margin: 0;
+}
+
+.wx-head p {
+  margin: 0;
+}
+
+.wx-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  color: var(--fg);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* The whole card is the tap target while the link keeps the only accessible name. */
+.wx-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+}
+
+.wx-link:focus-visible {
+  outline: none;
+}
+
+.wx-link:focus-visible::after {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.wx-badge {
+  align-self: flex-start;
+  margin: 0;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+.wx-current {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.wx-current p {
+  margin: 0;
+}
+
+.wx-temp {
+  font-size: 3rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.wx-desc {
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.wx-age {
+  font-size: 0.875rem;
+}
+
+.wx-periods {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wx-period-name {
+  font-weight: 700;
+}
+
+.wx-period-temp {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-note {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+/* Fixed aspect ratio so the card does not jump when the image arrives. */
+.wx-radar {
+  aspect-ratio: 600 / 550;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.wx-radar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
