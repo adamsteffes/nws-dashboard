@@ -1,6 +1,7 @@
 import { render } from "lit-html";
 import { createAppContext } from "./app/context";
 import { createDashboardController } from "./app/dashboardController";
+import { createDiscussionController } from "./app/discussionController";
 import { createManageController } from "./app/manageController";
 import "./styles/base.css";
 import {
@@ -37,6 +38,9 @@ const root: HTMLElement = app;
 const ctx = createAppContext();
 const manage = createManageController(ctx, { onChange: () => update() });
 const dashboard = createDashboardController(ctx, { onChange: () => update() });
+const discussion = createDiscussionController(ctx, {
+  onChange: () => update(),
+});
 
 // Data older than this is reloaded when the dashboard is opened.
 const DASHBOARD_MAX_AGE_MS = 5 * 60_000;
@@ -63,7 +67,9 @@ function routeContent(route: Route) {
     case "location":
       return locationView(ctx.store.get(route.id));
     case "discussion":
-      return discussionView(route.id, route.productId);
+      return discussionView(discussion.viewProps(), {
+        onSections: (on) => discussion.setSections(on),
+      });
     case "manage":
       return manageView(manage.viewProps());
     case "notFound":
@@ -83,8 +89,14 @@ function update() {
       route,
       title,
       online: dashboard.online,
-      refreshing: dashboard.refreshing,
-      onRefresh: () => void dashboard.load({ refresh: true }),
+      refreshing:
+        route.name === "discussion"
+          ? discussion.refreshing
+          : dashboard.refreshing,
+      onRefresh: () =>
+        void (route.name === "discussion"
+          ? discussion.refresh()
+          : dashboard.load({ refresh: true })),
       content: routeContent(route),
       version: __APP_VERSION__,
       notices: updatePromptView({
@@ -115,6 +127,9 @@ createRouter((next) => {
   // Stale confirms and messages from an earlier visit shouldn't greet the user.
   if (next.name === "manage" && route.name !== "manage") manage.reset();
   route = next;
+  if (changed && next.name === "discussion") {
+    void discussion.open(next.id, next.productId);
+  }
   update();
   if (
     next.name === "dashboard" &&
@@ -140,6 +155,9 @@ ctx.store.subscribe(update);
 
 update();
 if (route.name === "dashboard") void dashboard.load();
+if (route.name === "discussion") {
+  void discussion.open(route.id, route.productId);
+}
 subscribePwa(update);
 
 // Ask the browser not to evict saved locations under storage pressure; the result is advisory.
