@@ -17,7 +17,9 @@
     "test:e2e": "playwright test",
     "test:e2e:live": "LIVE=1 playwright test --project=live",
     "typecheck": "tsc --noEmit",
-    "record-fixtures": "node scripts/record-fixtures.ts"
+    "record-fixtures": "node scripts/record-fixtures.ts",
+    "generate-icons": "pwa-assets-generator",
+    "check:pwa": "node scripts/check-pwa-build.ts"
   },
   "dependencies": {
     "idb-keyval": "^6.3.0",
@@ -27,10 +29,14 @@
     "@biomejs/biome": "^2.6.7",
     "@playwright/test": "1.63.0",
     "@types/node": "^24.19.2",
+    "@vite-pwa/assets-generator": "^2.0.0",
     "fake-indexeddb": "^6.2.8",
     "happy-dom": "^21.0.4",
     "typescript": "^7.0.2",
     "vite": "^8.3.8",
-    "vitest": "^5.1.0"
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.1.0",
+    "workbox-build": "^7.4.1",
+    "workbox-window": "^7.4.1"
   }
 }
